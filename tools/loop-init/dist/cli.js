@@ -36,6 +36,20 @@ const PATTERNS_NEEDING_FIX = new Set([
  * it instead of guessing and burning fix attempts.
  */
 const PATTERNS_NEEDING_INTAKE = new Set(['issue-triage']);
+const CODEBASE_MAP_AGENTS_START = '<!-- loop-engineering:codebase-map:start -->';
+const CODEBASE_MAP_AGENTS_END = '<!-- loop-engineering:codebase-map:end -->';
+const CODEBASE_MAP_AGENTS_BLOCK = `${CODEBASE_MAP_AGENTS_START}
+## Codebase map
+
+For unfamiliar code or cross-file work involving architecture, ownership, dependencies, call flow, or data flow, use \`$codebase-map\` before broad local scanning. Codebase Memory is the default discovery route when usable; confirm decisive results against current files, diffs, and tests. Follow the skill's non-persisted indexing and bounded fallback rules.
+${CODEBASE_MAP_AGENTS_END}`;
+const EXECUTION_LOOP_AGENTS_START = '<!-- loop-engineering:execution-loop:start -->';
+const EXECUTION_LOOP_AGENTS_END = '<!-- loop-engineering:execution-loop:end -->';
+const EXECUTION_LOOP_AGENTS_BLOCK = `${EXECUTION_LOOP_AGENTS_START}
+## Execution loop default
+
+For meaningful change, build, fix, or refactor work, use \`$execution-loop\` and carry the task through plan, implementation, targeted verification, a fresh independent check, and an evidence-backed finish. Auto-continue clear reversible local work. Use \`loop task\` for meaningful or multi-turn state when available; otherwise keep the same phases in memory without installing anything.
+${EXECUTION_LOOP_AGENTS_END}`;
 const STATE_FILES = {
     'daily-triage': 'STATE.md',
     'pr-babysitter': 'pr-babysitter-state.md',
@@ -172,7 +186,7 @@ function foundryStackYaml(stackName, pattern, preset, provider = 'anthropic', re
             ? minimaxInterfaceYaml(model, region)
             : `    - primitive: model/anthropic
       config:
-        model: claude-sonnet-4-20250514`;
+        model: claude-sonnet-4-6`;
         return `name: ${stackName}
 version: 1.0.0
 description: "loop-engineering ${pattern} → implementer harness (loop-init --with-foundry)"
@@ -535,6 +549,23 @@ async function scaffoldConstraints(targetDir, templatesRoot, tool, dryRun) {
     }
     await copyTemplateSkill(templatesRoot, 'SKILL.md.loop-constraints', targetDir, tool, 'loop-constraints', dryRun);
 }
+async function ensureLoopStateIgnored(targetDir, dryRun) {
+    const gitignorePath = path.join(targetDir, '.gitignore');
+    const existing = (await exists(gitignorePath)) ? await readFile(gitignorePath, 'utf8') : '';
+    const entries = existing.split(/\r?\n/).map((line) => line.trim());
+    if (entries.includes('.loop/')) {
+        console.log('  skip: .gitignore already ignores .loop/');
+        return;
+    }
+    if (dryRun) {
+        console.log('  would append: .gitignore (.loop/)');
+        return;
+    }
+    const newline = existing.includes('\r\n') ? '\r\n' : '\n';
+    const separator = existing.length === 0 ? '' : existing.endsWith(newline) ? '' : newline;
+    await writeFile(gitignorePath, `${existing}${separator}.loop/${newline}`);
+    console.log('  appended: .gitignore (.loop/)');
+}
 async function copyFile(src, dest, dryRun) {
     if (!(await exists(src)))
         return false;
@@ -546,6 +577,40 @@ async function copyFile(src, dest, dryRun) {
     await cp(src, dest);
     console.log(`  copied: ${src} → ${dest}`);
     return true;
+}
+async function ensureCodexCodebaseMapAgentsBlock(targetDir, dryRun) {
+    const agentsPath = path.join(targetDir, 'AGENTS.md');
+    const existing = (await exists(agentsPath)) ? await readFile(agentsPath, 'utf8') : '';
+    if (existing.includes(CODEBASE_MAP_AGENTS_START)) {
+        console.log('  skip: AGENTS.md already contains the codebase-map block');
+        return;
+    }
+    if (dryRun) {
+        console.log('  would append: AGENTS.md (Codex codebase-map block)');
+        return;
+    }
+    const newline = existing.includes('\r\n') ? '\r\n' : '\n';
+    const separator = existing.length === 0 ? '' : existing.endsWith(`${newline}${newline}`) ? '' : existing.endsWith(newline) ? newline : `${newline}${newline}`;
+    const block = CODEBASE_MAP_AGENTS_BLOCK.replaceAll('\n', newline);
+    await writeFile(agentsPath, `${existing}${separator}${block}${newline}`);
+    console.log('  appended: AGENTS.md (Codex codebase-map block)');
+}
+async function ensureCodexExecutionLoopAgentsBlock(targetDir, dryRun) {
+    const agentsPath = path.join(targetDir, 'AGENTS.md');
+    const existing = (await exists(agentsPath)) ? await readFile(agentsPath, 'utf8') : '';
+    if (existing.includes(EXECUTION_LOOP_AGENTS_START)) {
+        console.log('  skip: AGENTS.md already contains the execution-loop block');
+        return;
+    }
+    if (dryRun) {
+        console.log('  would append: AGENTS.md (Codex execution-loop block)');
+        return;
+    }
+    const newline = existing.includes('\r\n') ? '\r\n' : '\n';
+    const separator = existing.length === 0 ? '' : existing.endsWith(`${newline}${newline}`) ? '' : existing.endsWith(newline) ? newline : `${newline}${newline}`;
+    const block = EXECUTION_LOOP_AGENTS_BLOCK.replaceAll('\n', newline);
+    await writeFile(agentsPath, `${existing}${separator}${block}${newline}`);
+    console.log('  appended: AGENTS.md (Codex execution-loop block)');
 }
 const OPENCODE_RUN = 'opencode run';
 function firstLoopCommand(pattern, tool) {
@@ -805,6 +870,9 @@ Examples:
     await scaffoldObservability(pattern, tool, targetDir, templatesRoot, dryRun);
     await scaffoldIntake(pattern, tool, targetDir, templatesRoot, dryRun);
     await scaffoldConstraints(targetDir, templatesRoot, tool, dryRun);
+    await ensureLoopStateIgnored(targetDir, dryRun);
+    await copyTemplateSkill(templatesRoot, 'SKILL.md.codebase-map', targetDir, tool, 'codebase-map', dryRun);
+    await copyTemplateSkill(templatesRoot, 'SKILL.md.execution-loop', targetDir, tool, 'execution-loop', dryRun);
     if (tool !== 'opencode' && !dryRun && !(await exists(path.join(targetDir, 'AGENTS.md')))) {
         const agentsTemplate = `# AGENTS.md
 
@@ -818,6 +886,10 @@ npm run lint
 `;
         await writeFile(path.join(targetDir, 'AGENTS.md'), agentsTemplate);
         console.log('  created: AGENTS.md (template)');
+    }
+    if (tool === 'codex') {
+        await ensureCodexCodebaseMapAgentsBlock(targetDir, dryRun);
+        await ensureCodexExecutionLoopAgentsBlock(targetDir, dryRun);
     }
     let foundryPreset;
     if (withFoundry) {

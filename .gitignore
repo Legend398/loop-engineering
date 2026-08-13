@@ -55,3 +55,4 @@ state.json
 *.session
 !tools/loop-sync/dist/
 *.tgz
+.loop/

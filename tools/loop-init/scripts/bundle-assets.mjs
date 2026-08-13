@@ -1,11 +1,14 @@
 #!/usr/bin/env node
-import { cp, rm, access, rename, mkdir } from 'node:fs/promises';
+import { cp, rm, access, rename, mkdir, rmdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const REPO_ROOT = path.resolve(PACKAGE_ROOT, '../..');
 const LOCK_DIR = path.join(PACKAGE_ROOT, '.bundle-assets.lock');
+const RETRY_ATTEMPTS = 100;
+const RETRY_MS = 50;
+const WINDOWS_TRANSIENT_CODES = new Set(['EACCES', 'EBUSY', 'ENOTEMPTY', 'EPERM']);
 
 async function exists(p) {
   try {
@@ -16,6 +19,17 @@ async function exists(p) {
   }
 }
 
+async function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function isRetryable(error) {
+  return error?.code === 'EEXIST' ||
+    (process.platform === 'win32' && WINDOWS_TRANSIENT_CODES.has(error?.code));
+}
+
 async function replaceDirectory(src, dest) {
   const tempDest = `${dest}.tmp-${process.pid}-${Date.now()}`;
   let moved = false;
@@ -23,16 +37,17 @@ async function replaceDirectory(src, dest) {
   try {
     await cp(src, tempDest, { recursive: true });
 
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      await rm(dest, { recursive: true, force: true });
+    for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt += 1) {
       try {
+        await rm(dest, { recursive: true, force: true });
         await rename(tempDest, dest);
         moved = true;
         return;
       } catch (err) {
-        if (err?.code !== 'EEXIST' || attempt === 2) {
+        if (!isRetryable(err) || attempt === RETRY_ATTEMPTS - 1) {
           throw err;
         }
+        await sleep(RETRY_MS);
       }
     }
   } finally {
@@ -42,22 +57,29 @@ async function replaceDirectory(src, dest) {
   }
 }
 
-async function sleep(ms) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
+async function releaseBundleLock() {
+  for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      await rmdir(LOCK_DIR);
+      return;
+    } catch (err) {
+      if (err?.code === 'ENOENT') return;
+      if (!isRetryable(err) || attempt === RETRY_ATTEMPTS - 1) throw err;
+      await sleep(RETRY_MS);
+    }
+  }
 }
 
 async function acquireLock() {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt += 1) {
     try {
       await mkdir(LOCK_DIR);
-      return async () => rm(LOCK_DIR, { recursive: true, force: true });
+      return releaseBundleLock;
     } catch (err) {
-      if (err?.code !== 'EEXIST') {
+      if (!isRetryable(err)) {
         throw err;
       }
-      await sleep(50);
+      await sleep(RETRY_MS);
     }
   }
   throw new Error(`bundle-assets: timed out waiting for ${LOCK_DIR}`);

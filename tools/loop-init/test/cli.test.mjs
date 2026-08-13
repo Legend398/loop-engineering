@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, access, readFile } from 'node:fs/promises';
+import { mkdtemp, rm, access, readFile, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
@@ -8,6 +8,10 @@ import { promisify } from 'node:util';
 
 const exec = promisify(execFile);
 const CLI = path.resolve('dist/cli.js');
+const CODEBASE_MAP_AGENTS_START = '<!-- loop-engineering:codebase-map:start -->';
+const CODEBASE_MAP_AGENTS_END = '<!-- loop-engineering:codebase-map:end -->';
+const EXECUTION_LOOP_AGENTS_START = '<!-- loop-engineering:execution-loop:start -->';
+const EXECUTION_LOOP_AGENTS_END = '<!-- loop-engineering:execution-loop:end -->';
 
 test('bundle-assets tolerates concurrent rebuilds', async () => {
   await Promise.all([
@@ -39,6 +43,197 @@ test('loop-init dry-run scaffolds daily-triage', async () => {
     ]);
     assert.match(stdout, /loop-init: daily-triage/);
     assert.match(stdout, /would copy|copied/);
+    assert.match(stdout, /codebase-map/);
+    await assert.rejects(() => access(path.join(dir, '.grok', 'skills', 'codebase-map', 'SKILL.md')));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('codebase-map skill and scaffold template are byte-identical', async () => {
+  const repoRoot = path.resolve('../..');
+  const skill = await readFile(path.join(repoRoot, 'skills', 'codebase-map', 'SKILL.md'));
+  const template = await readFile(path.join(repoRoot, 'templates', 'SKILL.md.codebase-map'));
+  assert.deepEqual(skill, template);
+});
+
+test('execution-loop skill and scaffold template are byte-identical', async () => {
+  const repoRoot = path.resolve('../..');
+  const skill = await readFile(path.join(repoRoot, 'skills', 'execution-loop', 'SKILL.md'));
+  const template = await readFile(path.join(repoRoot, 'templates', 'SKILL.md.execution-loop'));
+  assert.deepEqual(skill, template);
+});
+
+test('loop-init preserves existing .gitignore content and adds one .loop entry on rerun', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'loop-init-gitignore-existing-'));
+  const gitignorePath = path.join(dir, '.gitignore');
+  const existing = 'node_modules/\n.env\n';
+  try {
+    await writeFile(gitignorePath, existing);
+    await exec('node', [CLI, dir, '--pattern', 'daily-triage', '--tool', 'claude']);
+    const first = await readFile(gitignorePath, 'utf8');
+    assert.ok(first.startsWith(existing));
+    assert.equal(first.split('.loop/').length - 1, 1);
+
+    await exec('node', [CLI, dir, '--pattern', 'daily-triage', '--tool', 'claude']);
+    const second = await readFile(gitignorePath, 'utf8');
+    assert.equal(second, first);
+    assert.equal(second.split('.loop/').length - 1, 1);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('loop-init dry-run reports .loop ignore without writing .gitignore', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'loop-init-gitignore-dry-run-'));
+  const gitignorePath = path.join(dir, '.gitignore');
+  const existing = 'node_modules/\n';
+  try {
+    await writeFile(gitignorePath, existing);
+    const { stdout } = await exec('node', [CLI, dir, '--pattern', 'daily-triage', '--tool', 'opencode', '--dry-run']);
+    assert.match(stdout, /would append: \.gitignore \(\.loop\/\)/);
+    assert.equal(await readFile(gitignorePath, 'utf8'), existing);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('loop-init scaffolds the execution-first default for Codex and Claude', async () => {
+  const targets = {
+    codex: ['.codex', 'skills', 'execution-loop', 'SKILL.md'],
+    claude: ['.claude', 'skills', 'execution-loop', 'SKILL.md'],
+  };
+  for (const [tool, parts] of Object.entries(targets)) {
+    const dir = await mkdtemp(path.join(tmpdir(), `loop-init-execution-loop-${tool}-`));
+    try {
+      await exec('node', [CLI, dir, '--pattern', 'daily-triage', '--tool', tool]);
+      const skill = await readFile(path.join(dir, ...parts), 'utf8');
+      assert.match(skill, /task -> plan -> implement -> verify -> checker -> finish/);
+      assert.match(skill, /Auto-continue clear, reversible local work/);
+      assert.match(skill, /loop task start "<objective>"/);
+      assert.match(skill, /loop task verify "--" <executable> \[args\.\.\.\]/);
+      assert.match(skill, /loop task check pass "<evidence>" --checker <label>/);
+      assert.match(skill, /loop task check fail "<evidence>" --checker <label>/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test('loop-init does not overwrite an existing execution-loop skill', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'loop-init-execution-loop-existing-'));
+  const skillPath = path.join(dir, '.codex', 'skills', 'execution-loop', 'SKILL.md');
+  try {
+    await mkdir(path.dirname(skillPath), { recursive: true });
+    await writeFile(skillPath, 'custom execution policy\n');
+    await exec('node', [CLI, dir, '--pattern', 'daily-triage', '--tool', 'codex']);
+    assert.equal(await readFile(skillPath, 'utf8'), 'custom execution policy\n');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('loop-init scaffolds the map-first default for Codex and Claude', async () => {
+  const targets = {
+    codex: ['.codex', 'skills', 'codebase-map', 'SKILL.md'],
+    claude: ['.claude', 'skills', 'codebase-map', 'SKILL.md'],
+  };
+  for (const [tool, parts] of Object.entries(targets)) {
+    const dir = await mkdtemp(path.join(tmpdir(), `loop-init-codebase-map-${tool}-`));
+    try {
+      await exec('node', [CLI, dir, '--pattern', 'daily-triage', '--tool', tool]);
+      const skill = await readFile(path.join(dir, ...parts), 'utf8');
+      assert.match(skill, /Use this discovery policy by default for unfamiliar code or cross-file work/);
+      assert.match(skill, /architecture, ownership, dependencies, call flow, or data flow/);
+      assert.match(skill, /create a full-repository index with persistence explicitly set to `false`/);
+      assert.match(skill, /compact architecture view/);
+      assert.match(skill, /targeted graph and code search/);
+      assert.match(skill, /Keep the full graph and complete index outside the prompt/);
+      assert.match(skill, /unavailable, stale, unsupported for the required operation, fails, or returns incomplete evidence/);
+      assert.match(skill, /rg --files/);
+      assert.match(skill, /Never auto-install, configure, authenticate, upgrade, or repair Codebase Memory/);
+      assert.match(skill, /new indexes must explicitly use `persistence: false`/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test('loop-init does not overwrite an existing codebase-map skill', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'loop-init-codebase-map-existing-'));
+  const skillPath = path.join(dir, '.codex', 'skills', 'codebase-map', 'SKILL.md');
+  try {
+    await mkdir(path.dirname(skillPath), { recursive: true });
+    await writeFile(skillPath, 'custom local policy\n');
+    await exec('node', [CLI, dir, '--pattern', 'daily-triage', '--tool', 'codex']);
+    assert.equal(await readFile(skillPath, 'utf8'), 'custom local policy\n');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('loop-init appends the marked Codex map-first block without replacing existing AGENTS.md', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'loop-init-codex-agents-existing-'));
+  const agentsPath = path.join(dir, 'AGENTS.md');
+  const existing = '# Local project rules\n\nKeep this exact guidance.\n';
+  try {
+    await writeFile(agentsPath, existing);
+    await exec('node', [CLI, dir, '--pattern', 'daily-triage', '--tool', 'codex']);
+    const first = await readFile(agentsPath, 'utf8');
+    assert.ok(first.startsWith(existing));
+    assert.match(first, new RegExp(CODEBASE_MAP_AGENTS_START));
+    assert.match(first, /use `\$codebase-map` before broad local scanning/);
+    assert.match(first, /Codebase Memory is the default discovery route/);
+    assert.match(first, new RegExp(CODEBASE_MAP_AGENTS_END));
+
+    await exec('node', [CLI, dir, '--pattern', 'daily-triage', '--tool', 'codex']);
+    const second = await readFile(agentsPath, 'utf8');
+    assert.equal(second, first);
+    assert.equal(second.split(CODEBASE_MAP_AGENTS_START).length - 1, 1);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('loop-init appends one marked Codex execution-loop block and preserves AGENTS.md on rerun', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'loop-init-execution-loop-agents-'));
+  const agentsPath = path.join(dir, 'AGENTS.md');
+  const existing = '# Local project rules\n\nKeep this exact guidance.\n';
+  try {
+    await writeFile(agentsPath, existing);
+    await exec('node', [CLI, dir, '--pattern', 'daily-triage', '--tool', 'codex']);
+    const first = await readFile(agentsPath, 'utf8');
+    assert.ok(first.startsWith(existing));
+    assert.match(first, new RegExp(CODEBASE_MAP_AGENTS_END));
+    assert.match(first, new RegExp(EXECUTION_LOOP_AGENTS_START));
+    assert.match(first, /use `\$execution-loop`/);
+    assert.match(first, new RegExp(EXECUTION_LOOP_AGENTS_END));
+
+    await exec('node', [CLI, dir, '--pattern', 'daily-triage', '--tool', 'codex']);
+    const second = await readFile(agentsPath, 'utf8');
+    assert.equal(second, first);
+    assert.equal(second.split(EXECUTION_LOOP_AGENTS_START).length - 1, 1);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('loop-init Codex dry-run reports the AGENTS map-first block without writing it', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'loop-init-codex-agents-dry-run-'));
+  try {
+    const { stdout } = await exec('node', [
+      CLI,
+      dir,
+      '--pattern',
+      'daily-triage',
+      '--tool',
+      'codex',
+      '--dry-run',
+    ]);
+    assert.match(stdout, /would append: AGENTS\.md \(Codex codebase-map block\)/);
+    assert.match(stdout, /would append: AGENTS\.md \(Codex execution-loop block\)/);
+    assert.match(stdout, /execution-loop/);
+    await assert.rejects(() => access(path.join(dir, 'AGENTS.md')));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -562,6 +757,16 @@ for (const [pattern, contract] of Object.entries(SCAFFOLD_PATTERNS)) {
         await expectPathExists(dir, ...skillRoot, contract.primarySkill, 'SKILL.md');
         await expectPathExists(dir, ...skillRoot, 'loop-budget', 'SKILL.md');
         await expectPathExists(dir, ...skillRoot, 'loop-constraints', 'SKILL.md');
+        await expectPathExists(dir, ...skillRoot, 'codebase-map', 'SKILL.md');
+        await expectPathExists(dir, ...skillRoot, 'execution-loop', 'SKILL.md');
+
+        if (tool === 'codex') {
+          const agents = await readFile(path.join(dir, 'AGENTS.md'), 'utf8');
+          assert.match(agents, new RegExp(CODEBASE_MAP_AGENTS_START));
+          assert.match(agents, /Codebase Memory is the default discovery route/);
+          assert.match(agents, new RegExp(EXECUTION_LOOP_AGENTS_START));
+          assert.match(agents, /use `\$execution-loop`/);
+        }
 
         if (tool === 'opencode') {
           await expectPathExists(dir, 'opencode.json');

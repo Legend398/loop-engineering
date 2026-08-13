@@ -33,8 +33,25 @@ CI runs `validate-patterns` and `audit` on every push/PR (see `.github/workflows
 ## Loop operation (this repo)
 
 - **Daily triage**: `loop-triage` skill → `STATE.md` (report-only, L1).
-- **Fixes**: only via PR with human review; `minimal-fix` + `loop-verifier` for assisted changes (L2).
+- **Fixes**: use the execution workflow below for local changes; require PR/human review only when contributing or publishing upstream.
 - **Isolation**: use git worktrees for any unattended code-change experiments (see `LOOP.md`).
+
+<!-- loop-engineering:execution-loop:start -->
+## Default execution workflow
+
+For meaningful change, build, fix, or refactor work, use `$execution-loop` and
+carry the task through plan, implementation, targeted verification, a fresh
+independent check, and an evidence-backed finish. Auto-continue clear reversible
+local work. Use `loop task` for meaningful or multi-turn state when available;
+otherwise keep the same phases in memory without installing anything.
+<!-- loop-engineering:execution-loop:end -->
+
+## Codebase discovery
+
+- For unfamiliar code or cross-file work involving architecture, ownership, dependencies, call flow, or data flow, use the `codebase-map` skill and Codebase Memory as the default discovery route.
+- Reuse a current usable index, or create a full-repository index with `persistence: false` so no shared artifact is written into the repository; keep the full graph outside the prompt.
+- Work from compact architecture to targeted graph/code search, trace, exact snippets, and local confirmation.
+- Fall back to local search only when Codebase Memory is unavailable, stale, unsupported, failed, or incomplete. Never auto-install, configure, authenticate, upgrade, repair, or request a repository-persisted artifact.
 
 ## Test commands
 
