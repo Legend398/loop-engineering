@@ -1,41 +1,85 @@
 #!/usr/bin/env node
-/**
- * Smoke test for scripts/append-run-log.mjs.
- * Run directly (node scripts/append-run-log.test.mjs) or via the validate gates.
- */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-import { mkdtemp, writeFile, rm, readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { promisify } from 'node:util';
 
 const exec = promisify(execFile);
-const SCRIPT = new URL('./append-run-log.mjs', import.meta.url).pathname;
+const CLI = path.resolve('scripts/append-run-log.mjs');
+const MARKER = '<!-- Loop appends below this line -->';
 
-test('invalid JSON second arg exits 1 with a Usage / valid JSON message', async () => {
+async function freshLog() {
+  const dir = await mkdtemp(path.join(tmpdir(), 'loop-run-log-'));
+  const log = path.join(dir, 'loop-run-log.md');
+  await writeFile(log, `# Run log\n\n${MARKER}\n`);
+  return { dir, log };
+}
+
+function parseEntries(content) {
+  return content
+    .split('\n')
+    .filter((line) => line.trim().startsWith('{'))
+    .map((line) => JSON.parse(line));
+}
+
+test('invalid JSON exits with a usage message', async () => {
   await assert.rejects(
-    exec('node', [SCRIPT, 'not-json', 'ignored.log']),
-    (err) => {
-      assert.equal(err.code, 1);
-      const msg = `${err.stderr}${err.stdout}`;
-      assert.match(msg, /Usage|valid JSON/i);
+    exec(process.execPath, [CLI, 'not-json', 'ignored.log']),
+    (error) => {
+      assert.equal(error.code, 1);
+      assert.match(`${error.stderr}${error.stdout}`, /Usage|valid JSON/i);
       return true;
     },
   );
 });
 
-test('valid minimal JSON entry does not throw on parse', async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), 'append-run-log-'));
-  const logPath = path.join(dir, 'loop-run-log.md');
-  await writeFile(logPath, '<!-- Loop appends below this line -->\n');
+test('replaying the same run id replaces its entry instead of duplicating it', async () => {
+  const { dir, log } = await freshLog();
+  const runId = new Date().toISOString();
   try {
-    const entry = JSON.stringify({ run_id: 'run-1', outcome: 'ok' });
-    const { stdout } = await exec('node', [SCRIPT, entry, logPath]);
-    assert.match(stdout, /Appended run run-1/);
-    const written = await readFile(logPath, 'utf8');
-    assert.ok(written.includes('"run_id":"run-1"'));
+    await exec(process.execPath, [CLI, JSON.stringify({ run_id: runId, outcome: 'started' }), log]);
+    await exec(process.execPath, [CLI, JSON.stringify({ run_id: runId, outcome: 'passed' }), log]);
+    const entries = parseEntries(await readFile(log, 'utf8'));
+    assert.deepEqual(entries, [{ run_id: runId, outcome: 'passed' }]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('concurrent distinct runs are serialized without lost entries or lock debris', async () => {
+  const { dir, log } = await freshLog();
+  const baseTime = Date.now();
+  const entries = Array.from({ length: 12 }, (_, index) => ({
+    run_id: new Date(baseTime - index).toISOString(),
+    outcome: 'passed',
+  }));
+  assert.equal(new Set(entries.map((entry) => entry.run_id)).size, entries.length);
+  try {
+    await Promise.all(entries.map((entry) => exec(process.execPath, [CLI, JSON.stringify(entry), log])));
+    const written = parseEntries(await readFile(log, 'utf8'));
+    assert.equal(written.length, entries.length);
+    assert.deepEqual(new Set(written.map((entry) => entry.run_id)), new Set(entries.map((entry) => entry.run_id)));
+    assert.deepEqual(
+      (await readdir(dir)).filter((name) => name.includes('.tmp-') || name.endsWith('.lock')),
+      [],
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('invalid entries fail without changing the log', async () => {
+  const { dir, log } = await freshLog();
+  const before = await readFile(log, 'utf8');
+  try {
+    await assert.rejects(
+      () => exec(process.execPath, [CLI, JSON.stringify({ outcome: 'passed' }), log]),
+      /date-like run_id/,
+    );
+    assert.equal(await readFile(log, 'utf8'), before);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

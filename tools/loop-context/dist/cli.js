@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import { readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
-import { buildContextInjection, checkCircuitBreaker, pruneLedger, summarizeAttempts, DEFAULT_BREAKER, DEFAULT_PRUNE, } from './context-manager.js';
+import { createHash } from 'node:crypto';
+import { buildContextInjection, checkCircuitBreaker, pruneLedger, summarizeAttempts, DEFAULT_BREAKER, DEFAULT_PRUNE, renderHandoff, renderResumeJson, } from './context-manager.js';
 import { resolveTokenBudgetFromPattern, resolveDailyBudgetFromPattern, } from './budget-resolver.js';
 import { recordDailySpend } from './daily-spend.js';
+import { runTaskCli } from './task-cli.js';
 /** Reject NaN/0/floats so a bad flag cannot silently disable the breaker. */
 function parsePositiveIntFlag(raw, flag) {
     if (raw === undefined || raw === '') {
@@ -60,6 +62,8 @@ function parseArgs(argv) {
             op = 'summary';
         else if (a === '--status')
             op = 'status';
+        else if (a === '--resume')
+            op = 'resume';
         else if (a === '--json')
             json = true;
         else if (a === '--max-iterations')
@@ -137,6 +141,7 @@ Operations (default: --status):
   --inject     Emit the compact context block for the next prompt.
   --summary    Emit a factual rollup of the run.
   --status     Human-readable overview (summary + breaker decision).
+  --resume     Print the optional bounded handoff without changing the ledger.
 
 Options:
   -f, --ledger <file>       Ledger JSON file (default: stdin)
@@ -174,12 +179,20 @@ Options:
 
 Ledger shape:
   { "goal": "...", "attempts": [ { "iteration": 1, "action": "...",
-    "outcome": "failure", "error": "...", "tokensUsed": 1200 } ] }
+    "outcome": "failure", "error": "...", "tokensUsed": 1200 } ],
+    "handoff": { "schema": 1, "state": "running", "brief": "...",
+      "nextStep": "...", "focusPaths": [], "proof": [], "needs": [],
+      "turnsLeft": 3 } }
 
 Exit codes: 0 continue · 2 escalate · 1 error
 `;
 async function main() {
-    const args = parseArgs(process.argv.slice(2));
+    const argv = process.argv.slice(2);
+    if (argv[0] === 'task') {
+        process.exitCode = await runTaskCli(argv.slice(1));
+        return;
+    }
+    const args = parseArgs(argv);
     if (args.help) {
         console.log(HELP);
         return;
@@ -224,6 +237,11 @@ async function main() {
         case 'inject':
             console.log(buildContextInjection(ledger, args.breaker, args.prune));
             return;
+        case 'resume':
+            console.log(args.json
+                ? renderResumeJson(ledger.handoff, ledger.goal)
+                : renderHandoff(ledger.handoff, ledger.goal));
+            return;
         case 'status':
         default: {
             const summary = summarizeAttempts(ledger);
@@ -247,7 +265,21 @@ async function applyDailyBudget(decision, ledger, args) {
     const pattern = args.dailyBudgetFromPattern;
     const latest = ledger.attempts[ledger.attempts.length - 1];
     const tokensDelta = latest?.tokensUsed ?? 0;
-    const state = await recordDailySpend(args.dailyStateDir, pattern, tokensDelta);
+    if (typeof ledger.startedAt !== 'string' ||
+        ledger.startedAt.length === 0 ||
+        ledger.startedAt.length > 128 ||
+        Number.isNaN(new Date(ledger.startedAt).getTime())) {
+        throw new Error('--daily-budget-from-pattern requires ledger.startedAt to be a date-like stable run identity.');
+    }
+    if (latest && (!Number.isSafeInteger(latest.iteration) || latest.iteration < 1)) {
+        throw new Error('--daily-budget-from-pattern requires the latest attempt to have a positive integer iteration.');
+    }
+    const eventId = createHash('sha256').update(JSON.stringify({
+        pattern,
+        startedAt: ledger.startedAt,
+        iteration: latest?.iteration ?? 0,
+    })).digest('hex');
+    const state = await recordDailySpend(args.dailyStateDir, pattern, tokensDelta, eventId);
     if (decision.escalate)
         return decision;
     const dailyCap = await resolveDailyBudgetFromPattern({

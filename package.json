@@ -18,9 +18,10 @@
     "test:loop": "cd tools/loop && npm test",
     "test:loop-metrics": "cd tools/loop-metrics && npm test",
     "test:goal-init": "cd tools/goal-init && npm test",
+    "test:run-log": "node --test scripts/append-run-log.test.mjs",
     "test:readiness-core": "cd tools/readiness-core && npm test",
     "test:goal-audit": "cd tools/goal-audit && npm test",
-    "test:tools": "npm run test:readiness-core && npm run test:loop-audit && npm run test:loop-init && npm run test:loop-cost && npm run test:loop-sync && npm run test:loop-context && npm run test:loop-gate && npm run test:mcp-server && npm run test:loop-worktree && npm run test:loop-sandbox && npm run test:loop-swarm && npm run test:loop && npm run test:loop-metrics && npm run test:goal-audit && npm run test:goal-init",
+    "test:tools": "npm run test:readiness-core && npm run test:loop-audit && npm run test:loop-init && npm run test:loop-cost && npm run test:loop-sync && npm run test:loop-context && npm run test:loop-gate && npm run test:mcp-server && npm run test:loop-worktree && npm run test:loop-sandbox && npm run test:loop-swarm && npm run test:loop && npm run test:loop-metrics && npm run test:goal-audit && npm run test:goal-init && npm run test:run-log",
     "build:tools": "cd tools/readiness-core && npm run build && cd ../loop-audit && npm run build && cd ../loop-init && npm run build && cd ../loop-cost && npm run build && cd ../loop-sync && npm run build && cd ../loop-context && npm run build && cd ../loop-gate && npm run build && cd ../mcp-server && npm run build && cd ../loop-worktree && npm run build && cd ../loop-sandbox && npm run build && cd ../loop-swarm && npm run build && cd ../loop && npm run build && cd ../loop-metrics && npm run build && cd ../goal-audit && npm run build && cd ../goal-init && npm run build",
     "contributors:generate": "node scripts/generate-contributors.mjs",
     "contributors:check": "node scripts/generate-contributors.mjs --check"

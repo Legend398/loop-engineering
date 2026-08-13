@@ -10,6 +10,8 @@ import {
   calculateSimilarity,
   DEFAULT_BREAKER,
   DEFAULT_PRUNE,
+  CONTEXT_INJECTION_LIMITS,
+  MAX_CONTEXT_ACTIONS,
 } from '../dist/context-manager.js';
 
 function attempt(iteration, outcome, opts = {}) {
@@ -271,4 +273,88 @@ test('buildContextInjection shows OK status for a healthy run', () => {
   const l = ledger([attempt(1, 'noop'), attempt(2, 'success')]);
   const block = buildContextInjection(l);
   assert.ok(block.includes('Circuit breaker: OK'));
+});
+
+test('pruneLedger preserves the optional handoff record', () => {
+  const handoff = {
+    schema: 1,
+    state: 'finished',
+    brief: 'All targeted work is complete.',
+    focusPaths: ['src/index.ts'],
+    proof: ['Tests pass.'],
+    needs: [],
+    turnsLeft: 0,
+  };
+  const pruned = pruneLedger({ ...ledger([attempt(1, 'success')]), handoff });
+  assert.equal(pruned.handoff, handoff);
+});
+
+test('buildContextInjection keeps only recent unique actions and reports omissions', () => {
+  const attempts = Array.from({ length: MAX_CONTEXT_ACTIONS + 3 }, (_, i) =>
+    attempt(i + 1, 'success', { action: `action ${i + 1}` }));
+  const block = buildContextInjection(ledger(attempts));
+  assert.doesNotMatch(block, /- action 1\n/);
+  assert.doesNotMatch(block, /- action 2\n/);
+  assert.doesNotMatch(block, /- action 3\n/);
+  assert.match(block, /- action 4\n/);
+  assert.match(block, /3 earlier unique actions omitted/);
+  assert.equal((block.match(/^- action \d+$/gm) ?? []).length, MAX_CONTEXT_ACTIONS);
+});
+
+test('buildContextInjection is deterministic and bounded end to end', () => {
+  const attempts = Array.from({ length: 20 }, (_, i) =>
+    attempt(i + 1, 'failure', {
+      action: `action-${i}-${'a'.repeat(1000)}`,
+      error: `Error ${String.fromCharCode(65 + i)} unique: ${'e'.repeat(3000)}\n${'trace\n'.repeat(200)}`,
+    }));
+  const source = ledger(attempts);
+  source.goal = 'g'.repeat(5000);
+  const before = structuredClone(source);
+
+  const first = buildContextInjection(source, {
+    ...DEFAULT_BREAKER,
+    stagnationThreshold: 100,
+    frustrationThreshold: 100,
+    noProgressThreshold: 100,
+    maxIterations: 100,
+  }, {
+    ...DEFAULT_PRUNE,
+    maxTraceLines: 1000,
+    window: 20,
+  });
+  const second = buildContextInjection(source, {
+    ...DEFAULT_BREAKER,
+    stagnationThreshold: 100,
+    frustrationThreshold: 100,
+    noProgressThreshold: 100,
+    maxIterations: 100,
+  }, {
+    ...DEFAULT_PRUNE,
+    maxTraceLines: 1000,
+    window: 20,
+  });
+
+  assert.equal(first, second);
+  assert.ok(first.length <= CONTEXT_INJECTION_LIMITS.outputChars);
+  assert.ok(first.split('\n').length <= CONTEXT_INJECTION_LIMITS.outputLines);
+  assert.match(first, /additional error patterns omitted/);
+  assert.deepEqual(source, before);
+});
+
+test('buildContextInjection counts embedded newlines against the physical line cap', () => {
+  const source = ledger([
+    attempt(1, 'failure', {
+      action: `multi\nline\n${'action\n'.repeat(100)}`,
+      error: `Error: ${'small line\n'.repeat(300)}`,
+    }),
+  ]);
+  source.goal = `goal\n${'line\n'.repeat(200)}`;
+  const block = buildContextInjection(source, {
+    ...DEFAULT_BREAKER,
+    stagnationThreshold: 10,
+    frustrationThreshold: 10,
+    noProgressThreshold: 10,
+  });
+  assert.ok(block.split('\n').length <= CONTEXT_INJECTION_LIMITS.outputLines);
+  assert.ok(block.length <= CONTEXT_INJECTION_LIMITS.outputChars);
 });

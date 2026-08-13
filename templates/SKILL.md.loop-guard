@@ -18,11 +18,12 @@ The breaker needs no LLM call, so it is cheap enough to run on every iteration.
 
 ## The ledger
 
-`loop-ledger.json` records the loop's goal, its pattern/level, and one entry per
-attempt:
+`loop-ledger.json` records the loop's goal, a stable run timestamp, its
+pattern/level, and one entry per attempt:
 
 ```json
-{ "goal": "Get failing CI green", "pattern": "ci-sweeper", "level": "L2", "attempts": [] }
+{ "goal": "Get failing CI green", "startedAt": "<ISO-8601 run start>",
+  "pattern": "ci-sweeper", "level": "L2", "attempts": [] }
 ```
 
 `pattern` and `level` are seeded by `loop-init`; the breaker ignores them but the
@@ -37,6 +38,8 @@ After every iteration, append what you just tried:
 
 `outcome` is `success | failure | noop`. Always include `error` on failures —
 that is how the breaker detects a repeated (stagnant) failure.
+Set a new `startedAt` value when a distinct run begins. Daily-budget accounting
+uses the run and attempt identity so checking an unchanged ledger is idempotent.
 
 ## Size the token budget from the pattern
 

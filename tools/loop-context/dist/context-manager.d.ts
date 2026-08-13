@@ -15,6 +15,8 @@
  * All logic here is deterministic and dependency-free — no LLM call is required
  * to summarize or prune, so it is cheap to run on every iteration and easy to test.
  */
+import type { Handoff } from './handoff.js';
+export * from './handoff.js';
 export type Outcome = 'success' | 'failure' | 'noop';
 export interface Attempt {
     /** 1-based iteration number within the run. */
@@ -39,6 +41,8 @@ export interface Ledger {
     startedAt?: string;
     /** Ordered list of attempts, oldest first. */
     attempts: Attempt[];
+    /** Optional, bounded continuity record for a later read-only resume. */
+    handoff?: Handoff;
 }
 export interface CircuitBreakerConfig {
     /** Hard cap on total iterations before escalating. */
@@ -64,6 +68,18 @@ export interface PruneConfig {
 }
 export declare const DEFAULT_BREAKER: CircuitBreakerConfig;
 export declare const DEFAULT_PRUNE: PruneConfig;
+/** Maximum recent unique actions included in prompt context. */
+export declare const MAX_CONTEXT_ACTIONS = 8;
+/** Hard bounds for the complete prompt injection, not just its action list. */
+export declare const CONTEXT_INJECTION_LIMITS: Readonly<{
+    goalChars: 500;
+    actionChars: 240;
+    errorSampleChars: 240;
+    errorGroups: 6;
+    recentErrorChars: 1600;
+    outputLines: 64;
+    outputChars: 6000;
+}>;
 /**
  * Reduce a raw error / stack trace to a stable signature so that "the same
  * error" can be recognized across iterations even when volatile details

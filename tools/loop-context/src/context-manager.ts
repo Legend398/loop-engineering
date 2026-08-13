@@ -16,6 +16,10 @@
  * to summarize or prune, so it is cheap to run on every iteration and easy to test.
  */
 
+import type { Handoff } from './handoff.js';
+
+export * from './handoff.js';
+
 export type Outcome = 'success' | 'failure' | 'noop';
 
 export interface Attempt {
@@ -42,6 +46,8 @@ export interface Ledger {
   startedAt?: string;
   /** Ordered list of attempts, oldest first. */
   attempts: Attempt[];
+  /** Optional, bounded continuity record for a later read-only resume. */
+  handoff?: Handoff;
 }
 
 export interface CircuitBreakerConfig {
@@ -81,6 +87,41 @@ export const DEFAULT_PRUNE: PruneConfig = {
   window: 5,
   similarityThreshold: 0.85,
 };
+
+/** Maximum recent unique actions included in prompt context. */
+export const MAX_CONTEXT_ACTIONS = 8;
+
+/** Hard bounds for the complete prompt injection, not just its action list. */
+export const CONTEXT_INJECTION_LIMITS = Object.freeze({
+  goalChars: 500,
+  actionChars: 240,
+  errorSampleChars: 240,
+  errorGroups: 6,
+  recentErrorChars: 1600,
+  outputLines: 64,
+  outputChars: 6000,
+});
+
+const CONTEXT_TRUNCATION_NOTICE = '… managed context truncated to its configured bounds.';
+
+function truncateText(value: string, maxChars: number): string {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxChars) return normalized;
+  return `${normalized.slice(0, maxChars - 1).trimEnd()}…`;
+}
+
+function finalizeContextInjection(lines: string[]): string {
+  let output = lines.join('\n');
+  const physicalLines = output.split('\n');
+  if (physicalLines.length > CONTEXT_INJECTION_LIMITS.outputLines) {
+    output = `${physicalLines.slice(0, CONTEXT_INJECTION_LIMITS.outputLines - 1).join('\n')}\n${CONTEXT_TRUNCATION_NOTICE}`;
+  }
+  if (output.length > CONTEXT_INJECTION_LIMITS.outputChars) {
+    const available = CONTEXT_INJECTION_LIMITS.outputChars - CONTEXT_TRUNCATION_NOTICE.length - 1;
+    output = `${output.slice(0, available).trimEnd()}\n${CONTEXT_TRUNCATION_NOTICE}`;
+  }
+  return output;
+}
 
 // ── Error normalization ────────────────────────────────────────────
 
@@ -312,7 +353,12 @@ export function pruneLedger(ledger: Ledger, config: PruneConfig = DEFAULT_PRUNE)
     }
   }
 
-  return { goal: ledger.goal, startedAt: ledger.startedAt, attempts: collapsed };
+  return {
+    goal: ledger.goal,
+    startedAt: ledger.startedAt,
+    attempts: collapsed,
+    ...(ledger.handoff ? { handoff: ledger.handoff } : {}),
+  };
 }
 
 // ── Summarization ──────────────────────────────────────────────────
@@ -396,7 +442,7 @@ export function buildContextInjection(
 
   lines.push('## Loop Context (managed)');
   lines.push('');
-  lines.push(`**Goal:** ${ledger.goal}`);
+  lines.push(`**Goal:** ${truncateText(ledger.goal, CONTEXT_INJECTION_LIMITS.goalChars)}`);
   lines.push(
     `**Progress:** iteration ${summary.totalAttempts} · ${summary.successes} ok · ${summary.failures} failed` +
       (summary.tokensUsed ? ` · ${summary.tokensUsed} tokens` : ''),
@@ -404,15 +450,34 @@ export function buildContextInjection(
   lines.push('');
 
   if (summary.actionsTried.length > 0) {
-    lines.push('**Already tried (do NOT repeat):**');
-    for (const action of summary.actionsTried) lines.push(`- ${action}`);
+    const recentActions: string[] = [];
+    const seen = new Set<string>();
+    for (let i = ledger.attempts.length - 1; i >= 0 && recentActions.length < MAX_CONTEXT_ACTIONS; i--) {
+      const action = ledger.attempts[i].action;
+      if (!seen.has(action)) {
+        seen.add(action);
+        recentActions.push(action);
+      }
+    }
+    recentActions.reverse();
+    const omitted = summary.actionsTried.length - recentActions.length;
+    lines.push(`**Recently tried (do NOT repeat; latest ${MAX_CONTEXT_ACTIONS} unique):**`);
+    for (const action of recentActions) {
+      lines.push(`- ${truncateText(action, CONTEXT_INJECTION_LIMITS.actionChars)}`);
+    }
+    if (omitted > 0) lines.push(`- … ${omitted} earlier unique action${omitted === 1 ? '' : 's'} omitted.`);
     lines.push('');
   }
 
   if (summary.distinctErrors.length > 0) {
+    const shownErrors = summary.distinctErrors.slice(0, CONTEXT_INJECTION_LIMITS.errorGroups);
     lines.push('**Failure patterns:**');
-    for (const g of summary.distinctErrors) {
-      lines.push(`- (${g.count}×) ${g.sample}`);
+    for (const g of shownErrors) {
+      lines.push(`- (${g.count}×) ${truncateText(g.sample, CONTEXT_INJECTION_LIMITS.errorSampleChars)}`);
+    }
+    const omittedErrors = summary.distinctErrors.length - shownErrors.length;
+    if (omittedErrors > 0) {
+      lines.push(`- … ${omittedErrors} additional error pattern${omittedErrors === 1 ? '' : 's'} omitted.`);
     }
     lines.push('');
   }
@@ -421,7 +486,7 @@ export function buildContextInjection(
   if (lastFail?.error) {
     lines.push('**Most recent error (pruned):**');
     lines.push('```');
-    lines.push(lastFail.error);
+    lines.push(truncateText(lastFail.error, CONTEXT_INJECTION_LIMITS.recentErrorChars));
     lines.push('```');
     lines.push('');
   }
@@ -432,5 +497,5 @@ export function buildContextInjection(
       : `> Circuit breaker: OK (${decision.iterations}/${breaker.maxIterations} iterations used).`,
   );
 
-  return lines.join('\n');
+  return finalizeContextInjection(lines);
 }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolveDailyBudgetFromPattern } from '../dist/budget-resolver.js';
 
@@ -17,6 +17,7 @@ async function freshDir() {
 
 const stagnationLedger = JSON.stringify({
   goal: 'x',
+  startedAt: '2026-01-01T00:00:00.000Z',
   attempts: [
     { iteration: 1, action: 'a', outcome: 'failure', error: 'boom' },
     { iteration: 2, action: 'a', outcome: 'failure', error: 'boom' },
@@ -64,6 +65,7 @@ test('cli rejects missing numeric flag values', () => {
 
 const cheapLedger = JSON.stringify({
   goal: 'x',
+  startedAt: '2026-01-01T00:00:00.000Z',
   attempts: [{ iteration: 1, action: 'a', outcome: 'success', tokensUsed: 100 }],
 });
 
@@ -131,6 +133,46 @@ test('cli --daily-budget-from-pattern does not override an existing per-run trig
   assert.equal(decision.trigger, 'stagnation');
 });
 
+test('cli --daily-budget-from-pattern uses stable run and attempt identity', async () => {
+  const dir = await freshDir();
+  const args = [
+    '--check', '--daily-budget-from-pattern', 'ci-sweeper', '--budget-level', 'L2',
+    '--daily-state-dir', dir, '--json',
+  ];
+  const first = runCli(args, cheapLedger);
+  const sameLedgerWithReorderedAttemptFields = JSON.stringify({
+    goal: 'changed wording does not change identity',
+    startedAt: '2026-01-01T00:00:00.000Z',
+    attempts: [{ tokensUsed: 100, outcome: 'failure', action: 'edited action', iteration: 1 }],
+  });
+  const second = runCli(args, sameLedgerWithReorderedAttemptFields);
+  const distinctRun = runCli(args, JSON.stringify({
+    goal: 'x',
+    startedAt: '2026-01-01T00:00:01.000Z',
+    attempts: [{ iteration: 1, action: 'a', outcome: 'success', tokensUsed: 100 }],
+  }));
+  assert.equal(first.status, 0, first.stderr);
+  assert.equal(second.status, 0, second.stderr);
+  assert.equal(distinctRun.status, 0, distinctRun.stderr);
+
+  const state = JSON.parse(await readFile(path.join(dir, 'daily-spend.ci-sweeper.json'), 'utf8'));
+  assert.equal(state.tokensUsedToday, 200);
+  assert.equal(state.eventIds.length, 2);
+});
+
+test('cli --daily-budget-from-pattern requires a stable run identity', async () => {
+  const dir = await freshDir();
+  const result = runCli([
+    '--check', '--daily-budget-from-pattern', 'ci-sweeper', '--budget-level', 'L2',
+    '--daily-state-dir', dir,
+  ], JSON.stringify({
+    goal: 'x',
+    attempts: [{ iteration: 1, action: 'a', outcome: 'success', tokensUsed: 100 }],
+  }));
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /requires ledger\.startedAt.*stable run identity/);
+});
+
 test('cli --on-exceed pipes the escalation decision to the script as JSON', async () => {
   const dir = await freshDir();
   const outFile = path.join(dir, 'captured.json');
@@ -153,4 +195,59 @@ test('cli --on-exceed is not invoked when the run continues', async () => {
   );
   assert.equal(r.status, 0);
   await assert.rejects(() => readFile(outFile, 'utf8'));
+});
+
+const resumeLedger = {
+  goal: 'ship continuity',
+  attempts: [],
+  handoff: {
+    schema: 1,
+    state: 'running',
+    brief: 'Continue the bounded implementation.',
+    nextStep: 'Run targeted tests.',
+    focusPaths: ['tools/loop-context/src/handoff.ts'],
+    proof: ['Source implementation is present.'],
+    needs: [],
+    turnsLeft: 2,
+  },
+};
+
+test('cli --resume prints a valid handoff and does not mutate its ledger file', async () => {
+  const dir = await freshDir();
+  const ledgerPath = path.join(dir, 'ledger.json');
+  const original = `${JSON.stringify(resumeLedger, null, 2)}\n`;
+  try {
+    await writeFile(ledgerPath, original);
+    const r = runCli(['--resume', '--ledger', ledgerPath], '');
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /# Loop Handoff/);
+    assert.match(r.stdout, /Goal: ship continuity/);
+    assert.match(r.stdout, /Current repository files, diffs, and tests are authoritative/);
+    assert.equal(await readFile(ledgerPath, 'utf8'), original);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('cli --resume --json emits the structured canonical view', () => {
+  const r = runCli(['--resume', '--json'], JSON.stringify(resumeLedger));
+  assert.equal(r.status, 0, r.stderr);
+  const view = JSON.parse(r.stdout);
+  assert.equal(view.goal, resumeLedger.goal);
+  assert.equal(view.handoff.schema, 1);
+  assert.equal(view.handoff.state, 'running');
+  assert.match(view.authority, /Current repository files/);
+});
+
+test('cli --resume fails actionably when handoff is missing or invalid', () => {
+  const missing = runCli(['--resume'], JSON.stringify({ goal: 'x', attempts: [] }));
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /handoff is missing.*schema 1.*--resume/);
+
+  const invalid = runCli(
+    ['--resume'],
+    JSON.stringify({ ...resumeLedger, handoff: { ...resumeLedger.handoff, focusPaths: ['../outside'] } }),
+  );
+  assert.equal(invalid.status, 1);
+  assert.match(invalid.stderr, /normalized project-relative path/);
 });
