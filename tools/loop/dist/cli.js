@@ -32,7 +32,9 @@ Usage:
   loop status [path] [--json]   Day-2 dashboard from STATE / run-log
   loop badge [path]             README badge (→ loop-audit --badge)
   loop wizard [--yes]           Guided scaffold + doctor
+  loop task <command> [args…]   Executable task state machine
   loop context|worktree|gate|mcp|sandbox [args…]
+  loop context --resume --ledger <file.json>
 
 Week-one (recommended):
   npx @cobusgreyling/loop init . --pattern daily-triage --tool grok
@@ -146,6 +148,10 @@ async function main() {
     if (PASS_THROUGH.has(cmd)) {
         const code = await runTool(cmd, rest);
         process.exitCode = code;
+        return;
+    }
+    if (cmd === 'task') {
+        process.exitCode = await runTool('context', ['task', ...rest]);
         return;
     }
     if (cmd === 'doctor') {

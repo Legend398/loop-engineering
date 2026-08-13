@@ -4,7 +4,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { access } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 
 const exec = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -50,6 +51,54 @@ test('loop audit --help pass-through works when monorepo dist exists', async () 
   await access(path.join(REPO_ROOT, 'tools/loop-audit/dist/cli.js'));
   const { stdout } = await run(['audit', '--help']);
   assert.match(stdout, /loop-audit|Loop Readiness/i);
+});
+
+test('loop context passes --resume through without mutating the ledger', async () => {
+  await access(path.join(REPO_ROOT, 'tools/loop-context/dist/cli.js'));
+  const dir = await mkdtemp(path.join(tmpdir(), 'loop-resume-'));
+  const ledgerPath = path.join(dir, 'ledger.json');
+  const original = `${JSON.stringify({
+    goal: 'resume through front door',
+    attempts: [],
+    handoff: {
+      schema: 1,
+      state: 'running',
+      brief: 'Confirm pass-through behavior.',
+      nextStep: 'Read the rendered handoff.',
+      focusPaths: ['tools/loop/src/cli.ts'],
+      proof: ['loop-context is built.'],
+      needs: [],
+      turnsLeft: 1,
+    },
+  }, null, 2)}\n`;
+  try {
+    await writeFile(ledgerPath, original);
+    const { stdout } = await run(['context', '--resume', '--ledger', ledgerPath]);
+    assert.match(stdout, /# Loop Handoff/);
+    assert.match(stdout, /Confirm pass-through behavior/);
+    assert.equal(await readFile(ledgerPath, 'utf8'), original);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('loop task front door exposes task help', async () => {
+  const { stdout } = await run(['task', '--help']);
+  assert.match(stdout, /executable Engineering Loop state machine/);
+  assert.match(stdout, /loop task verify/);
+});
+
+test('loop task front door uses the requested state path', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'loop-front-door-task-'));
+  const statePath = path.join(dir, 'nested', 'task.json');
+  try {
+    const started = await run(['task', 'start', 'Front door task', '--state', statePath]);
+    assert.match(started.stdout, /Started task: Front door task/);
+    const status = await run(['task', 'status', '--json', '--state', statePath]);
+    assert.equal(JSON.parse(status.stdout).goal, 'Front door task');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test('loop doctor --json on repo root returns ready score', async () => {
