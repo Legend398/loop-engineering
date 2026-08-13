@@ -85,8 +85,8 @@ Every scaffold also creates:
 - `loop-budget.md` — pattern-specific daily caps and kill switch
 - `loop-run-log.md` — append-only run history
 - `loop-budget` skill — runtime budget guard at start/end of each run
-- `execution-loop` skill — the default day-to-day `task → plan → implement → verify → checker → finish` workflow, backed by one bounded `.loop/task.json` record and real verification commands
-- `codebase-map` skill — default Codebase Memory discovery for unfamiliar or cross-file architecture, ownership, dependency, call-flow, and data-flow work. It reuses a current usable index or creates a full-repository index with `persistence: false`, keeps the full graph outside the prompt, and narrows through compact architecture, targeted search, trace, exact snippets, and local confirmation. Local search is used only when Codebase Memory is unavailable, stale, unsupported, failed, or incomplete; the skill never installs, configures, authenticates, upgrades, repairs, or requests a repository-persisted artifact.
+- `execution-loop` skill — the day-to-day `task → plan → implement → verify → checker → finish` workflow, backed by one bounded `.loop/task.json` record and real verification commands
+- `codebase-map` skill — Codebase Memory-first discovery for unfamiliar or cross-file work, with the full graph kept outside the prompt and targeted local search as the fallback
 - Codex `AGENTS.md` guidance — idempotent marked blocks make `$execution-loop` the ordinary coding default and activate `$codebase-map` for unfamiliar or cross-file work while preserving existing project instructions; `--dry-run` reports appends without writing them
 
 ## Tools

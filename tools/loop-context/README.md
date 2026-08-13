@@ -27,16 +27,17 @@ cd tools/loop-context && npm install && npm test
 
 ## Execution task loop
 
-The `loop` front door keeps one compact `.loop/task.json` record and enforces the
-useful working order without adding approval ceremonies:
+From the repository root, this derivative's `loop` front door keeps one compact
+`.loop/task.json` record and enforces the useful working order without adding
+approval ceremonies:
 
 ```bash
-loop task start "Fix checkout totals"
-loop task plan "Locate the calculation path" "Add a regression test" "Implement the fix"
-loop task implemented "Corrected line-item rounding" --file src/checkout.ts --file test/checkout.test.ts
-loop task verify "--" npm test -- checkout.test.ts
-loop task check pass "Focused regression and diff review passed" --checker independent-reviewer
-loop task finish "Checkout totals are correct and verified"
+node tools/loop/dist/cli.js task start "Fix checkout totals"
+node tools/loop/dist/cli.js task plan "Locate the calculation path" "Add a regression test" "Implement the fix"
+node tools/loop/dist/cli.js task implemented "Corrected line-item rounding" --file src/checkout.ts --file test/checkout.test.ts
+node tools/loop/dist/cli.js task verify "--" npm test -- checkout.test.ts
+node tools/loop/dist/cli.js task check pass "Focused regression and diff review passed" --checker independent-reviewer
+node tools/loop/dist/cli.js task finish "Checkout totals are correct and verified"
 ```
 
 Failed verification or checker review returns the task to implementation. Use

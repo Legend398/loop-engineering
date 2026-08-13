@@ -10,18 +10,20 @@ Loop Engineering ships several focused CLIs (`loop-init`, `loop-audit`, `loop-co
 
 1. One binary people can remember  
 2. **Pass-through** to existing tools (same flags)  
-3. **task** for bounded day-to-day engineering
+3. **task** for bounded day-to-day engineering in this derivative
 4. **doctor** / **status** for recurring-loop activation and health
 
 ```text
-npx @cobusgreyling/loop task start "Fix checkout retry handling"
+node tools/loop/dist/cli.js task start "Fix checkout retry handling"
 npx @cobusgreyling/loop init . -p daily-triage -t grok
 npx @cobusgreyling/loop doctor .
 ```
 
 ## Day-to-day task loop
 
-`loop task` keeps a meaningful change moving without approval ceremonies:
+From a cloned checkout, `node tools/loop/dist/cli.js task` keeps a meaningful
+change moving without approval ceremonies. The shorter `loop task` form works
+after linking or installing this local build:
 
 ```bash
 loop task start "<objective>" [--state <path>]

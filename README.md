@@ -31,6 +31,12 @@
 
 > **Stop prompting. Design the loop. Get a score.**
 
+> [!NOTE]
+> This derivative keeps the upstream MIT reference intact and adds three focused
+> capabilities: a day-to-day execution task loop, bounded handoff/resume with
+> verification freshness, and Codebase Memory-first discovery. See
+> [PROVENANCE.md](PROVENANCE.md).
+
 <p align="center">
   <img src="assets/visuals/LE5.jpeg" alt="Loop Engineering — design the system that prompts your agents" width="100%" />
 </p>
@@ -46,21 +52,21 @@
 <p align="center"><sub>If this repo changed how you run agents, a star helps others find the patterns. Docs &amp; small PRs: we aim to review within <strong>48 hours</strong>.</sub></p>
 
 ```bash
-# Day-to-day engineering task (recommended)
-npx @cobusgreyling/loop task start "Fix checkout retry handling"
-npx @cobusgreyling/loop task plan "Inspect the retry path and tests" "Implement the smallest fix" "Run targeted verification and an independent check"
+# Added in this derivative — run from a cloned checkout
+node tools/loop/dist/cli.js task start "Fix checkout retry handling"
+node tools/loop/dist/cli.js task plan "Inspect the retry path and tests" "Implement the smallest fix" "Verify and review"
 # edit, then record implementation and run the real verification command
-npx @cobusgreyling/loop task implemented "Fixed retry classification" --file src/checkout.ts --file test/checkout.test.ts
-npx @cobusgreyling/loop task verify "--" npm test -- checkout.test.ts
-npx @cobusgreyling/loop task check pass "Targeted test and fresh diff review passed" --checker reviewer-1
-npx @cobusgreyling/loop task finish "Checkout retry handling fixed and verified"
+node tools/loop/dist/cli.js task implemented "Fixed retry classification" --file src/checkout.ts --file test/checkout.test.ts
+node tools/loop/dist/cli.js task verify "--" npm test -- checkout.test.ts
+node tools/loop/dist/cli.js task check pass "Targeted test and fresh diff review passed" --checker reviewer-1
+node tools/loop/dist/cli.js task finish "Checkout retry handling fixed and verified"
 
-# Recurring loop setup
+# Original recurring-loop setup remains unchanged
 npx @cobusgreyling/loop init . --pattern daily-triage --tool grok
 npx @cobusgreyling/loop doctor .
 ```
 
-`loop task` is the day-to-day path for a bounded change: task → plan → implement → verify → checker → finish. `loop init` scaffolds skills, state, and budget files for recurring patterns, then prints your **Loop Ready** score. `loop doctor` turns audit + sync into top-3 next actions. Swap `--tool` for `claude`, `codex`, or `opencode`. Optional: `--with-foundry` for a versioned harness stack. Legacy `npx @cobusgreyling/loop-init .` still works. See [docs/cli-front-door.md](docs/cli-front-door.md).
+The added `loop task` path carries a bounded change through task → plan → implement → verify → checker → finish. The upstream `loop init` flow still scaffolds recurring patterns, state, and budgets, while `loop doctor` turns audit + sync into top-3 next actions. Swap `--tool` for `claude`, `codex`, or `opencode`. Optional: `--with-foundry` for a versioned harness stack. Legacy `npx @cobusgreyling/loop-init .` still works. See [docs/cli-front-door.md](docs/cli-front-door.md).
 
 <p align="center">
   <a href="docs/QUICKSTART.md">
@@ -111,14 +117,14 @@ For developers using Grok, Claude Code, Codex, Cursor, and other AI coding agent
 | [Patterns](patterns/README.md) | 7 production patterns + [interactive picker](https://cobusgreyling.github.io/loop-engineering/#interactive) |
 | [Starters](starters/) | Clone-and-run kits (Grok, Claude Code, Codex, Opencode) |
 | [Opencode examples](examples/opencode/) | CLI-first loops: cron/systemd + `opencode run`, skills, worktrees |
-| [**loop** (front door)](tools/loop/) | **Unified CLI** — `npx @cobusgreyling/loop task \| init \| doctor \| status \| audit \| cost` · [cli-front-door](docs/cli-front-door.md) |
+| [**loop** (front door)](tools/loop/) | **Unified CLI** — upstream commands plus the local `node tools/loop/dist/cli.js task …` workflow · [cli-front-door](docs/cli-front-door.md) |
 | [loop-audit](tools/loop-audit/) | Loop Readiness Score CLI (v1.7 — constraints + governance + **Harness Runtime**) — `npx @cobusgreyling/loop audit . --suggest` · also `loop-audit` |
 | [loop-init](tools/loop-init/) | Scaffold starters + budget/run-log + constraints (v1.5) — `npx @cobusgreyling/loop init . --pattern daily-triage --tool grok` · also `loop-init` |
 | [harness-foundry](https://github.com/cobusgreyling/harness-foundry) | **Companion runtime:** versioned stacks, sessions, traces — `npx @cobusgreyling/harness-foundry init --from loop-engineering:daily-triage` |
 | [outerloop](https://github.com/cobusgreyling/outerloop) | **Companion governance:** evidence → verdict → answerability |
 | [loop-cost](tools/loop-cost/) | Token spend estimator — `npx @cobusgreyling/loop-cost` |
 | [loop-sync](tools/loop-sync/) | Drift detection between `STATE.md` and `LOOP.md` — `npx @cobusgreyling/loop-sync .` |
-| [loop-context](tools/loop-context/) | Stateful memory manager, circuit breaker, and bounded read-only handoff resume — `npx @cobusgreyling/loop-context --resume --ledger run.json` |
+| [loop-context](tools/loop-context/) | Stateful memory manager, circuit breaker, and bounded read-only handoff resume — `node tools/loop-context/dist/cli.js --resume --ledger run.json` |
 | [loop-mcp-server](tools/mcp-server/) | MCP runtime lookup for patterns, skills, state — `npx @cobusgreyling/loop-mcp-server` |
 | [loop-worktree](tools/loop-worktree/) | Manage isolated git worktrees per fix attempt — `npx @cobusgreyling/loop-worktree create --run-id <id> --pattern <p>` |
 | [loop-gate](tools/loop-gate/) | Mechanical enforcement of the path denylist + auto-merge allowlist from `gate.yaml` — `npx @cobusgreyling/loop-gate check --action auto-merge --paths <f1,f2,...>` |
@@ -129,16 +135,15 @@ For developers using Grok, Claude Code, Codex, Cursor, and other AI coding agent
 | [Fleet Engineering](https://github.com/cobusgreyling/fleet-engineering) | **Companion:** govern populations of agents — registry, inbox, Fleet Ready score (`npx @cobusgreyling/fleet-init .`) |
 | [Stories](stories/) | Real wins and honest failures |
 
-Scaffolded tool targets receive the [`codebase-map`](skills/codebase-map/SKILL.md)
-skill. For unfamiliar code and cross-file architecture, ownership, dependency, call-flow,
-or data-flow work, Codebase Memory is the default discovery route: reuse a current usable
-index or create a full-repository index with `persistence: false`, then narrow from compact
-architecture to targeted graph/code search, trace, exact snippets, and local confirmation.
-The full graph stays outside the prompt. Local search is the fallback only when Codebase
-Memory is unavailable, stale, unsupported, failed, or incomplete; the workflow never
-installs, configures, authenticates, upgrades, repairs, or requests a repository-persisted Codebase Memory artifact.
+### Additions in this derivative
 
-They also receive the [`execution-loop`](skills/execution-loop/SKILL.md) default for meaningful change, build, fix, and refactor work. It auto-continues clear reversible local work, uses a proportional plan and real targeted verification, and requires a fresh independent checker for behavior changes (or a fresh final-diff review for trivial non-behavior edits). Checker independence is a maker/checker role-separation contract; the CLI only records the supplied label and evidence and cannot authenticate identity. Scaffolding adds `.loop/` to `.gitignore`. When `loop task` is unavailable, agents follow the same phases in memory without requiring installation.
+| Addition | What changed |
+|----------|--------------|
+| [`execution-loop`](skills/execution-loop/SKILL.md) | A compact task → plan → implement → verify → checker → finish workflow for ordinary coding work. Successful verification is tied to the Git workspace so later edits require re-verification. |
+| Bounded continuity | `loop-context` can validate and render a small read-only handoff/resume view without introducing a daemon or a second state system. |
+| [`codebase-map`](skills/codebase-map/SKILL.md) | Unfamiliar or cross-file work uses Codebase Memory first, keeps the full graph outside the prompt, and falls back to targeted local search when needed. |
+
+`loop init` scaffolds both skills and ignores local `.loop/` task state without overwriting existing project guidance.
 
 ### Ecosystem stack
 

@@ -3,12 +3,15 @@
 **Unified front door** for [Loop Engineering](https://github.com/cobusgreyling/loop-engineering) CLIs.
 
 ```bash
-npx @cobusgreyling/loop task start "Fix checkout retry handling"
+# Added in this derivative (from tools/loop after npm ci)
+node dist/cli.js task start "Fix checkout retry handling"
+
+# Existing published upstream commands
 npx @cobusgreyling/loop init . --pattern daily-triage --tool grok
 npx @cobusgreyling/loop doctor .
 ```
 
-Use **task** for bounded day-to-day engineering. This package does **not** replace `loop-init`, `loop-audit`, or the other tools; recurring patterns and legacy package doors stay supported.
+Use **task** for bounded day-to-day engineering in this derivative. It does **not** replace `loop-init`, `loop-audit`, or the other tools; recurring patterns and legacy package doors stay supported.
 
 | Command | Delegates to | Notes |
 |---------|--------------|--------|
