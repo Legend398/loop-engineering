@@ -54,3 +54,25 @@ test('writeTaskLedger leaves complete parseable JSON', async (t) => {
   const persisted = await readFile(statePath, 'utf8');
   assert.doesNotThrow(() => JSON.parse(persisted));
 });
+
+test('legacy schema-1 verification without a workspace fingerprint still loads', async (t) => {
+  const statePath = await freshState(t);
+  const ledger = createTaskLedger('Load legacy verification', '2026-01-01T00:00:00.000Z');
+  ledger.task.phase = 'checker';
+  ledger.task.iteration = 1;
+  ledger.task.verification = {
+    iteration: 1,
+    command: [process.execPath, '-e', 'process.exit(0)'],
+    status: 'pass',
+    exitCode: 0,
+    outputTail: '',
+    recordedAt: '2026-01-01T00:00:01.000Z',
+  };
+  await mkdir(path.dirname(statePath), { recursive: true });
+  await writeFile(statePath, `${JSON.stringify(ledger, null, 2)}\n`);
+
+  const restored = await readTaskLedger(statePath);
+  assert.equal(restored.task.schema, 1);
+  assert.equal(restored.task.verification.status, 'pass');
+  assert.equal(restored.task.verification.workspaceFingerprint, undefined);
+});

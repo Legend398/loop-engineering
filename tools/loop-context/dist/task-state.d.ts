@@ -22,6 +22,7 @@ export interface VerificationEvidence {
     status: EvidenceStatus;
     exitCode: number | null;
     outputTail: string;
+    workspaceFingerprint?: string;
     recordedAt: string;
 }
 export interface CheckerEvidence {

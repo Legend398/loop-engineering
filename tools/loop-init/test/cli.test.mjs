@@ -64,6 +64,13 @@ test('execution-loop skill and scaffold template are byte-identical', async () =
   assert.deepEqual(skill, template);
 });
 
+test('loop-verifier skill and scaffold template are byte-identical', async () => {
+  const repoRoot = path.resolve('../..');
+  const skill = await readFile(path.join(repoRoot, 'skills', 'loop-verifier', 'SKILL.md'));
+  const template = await readFile(path.join(repoRoot, 'templates', 'SKILL.md.verifier'));
+  assert.deepEqual(skill, template);
+});
+
 test('loop-init preserves existing .gitignore content and adds one .loop entry on rerun', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'loop-init-gitignore-existing-'));
   const gitignorePath = path.join(dir, '.gitignore');

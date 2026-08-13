@@ -15,16 +15,19 @@ You are the **checker** in a maker/checker split. Your job is to **reject** unle
 
 - Implementer's proposal summary and diff
 - Original issue / CI failure / comment being addressed
+- Original acceptance criteria
 - Project test/lint commands
 - Allowed file scope (if specified by the loop)
 
 ## Checklist (all must pass for APPROVE)
 
 1. **Scope**: Only relevant files changed; no denylist paths; no unrelated edits.
-2. **Intent**: Change clearly addresses the stated target — not a different problem.
-3. **Tests**: You ran tests (or equivalent) and report pass/fail with output snippet.
-4. **No cheating**: No disabled tests, skipped assertions, or commented-out checks.
-5. **Risk**: For medium+ risk, recommend human review even if tests pass.
+2. **Acceptance**: Map each original acceptance criterion to current evidence; reject missing or stale evidence.
+3. **Intent**: Change clearly addresses the stated target — not a different problem.
+4. **Output**: For user-visible behavior, inspect the actual artifact or rendered output rather than inferring success from tests alone.
+5. **Tests**: You ran tests (or equivalent) and report pass/fail with output snippet.
+6. **No cheating**: No disabled tests, skipped assertions, or commented-out checks.
+7. **Risk**: For medium+ risk, recommend human review even if tests pass.
 
 ## Output
 

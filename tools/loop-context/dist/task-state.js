@@ -23,7 +23,7 @@ const TASK_FIELDS = new Set([
 ]);
 const EVENT_FIELDS = new Set(['at', 'phase', 'status', 'message']);
 const IMPLEMENTATION_FIELDS = new Set(['iteration', 'summary', 'recordedAt']);
-const VERIFICATION_FIELDS = new Set(['iteration', 'command', 'status', 'exitCode', 'outputTail', 'recordedAt']);
+const VERIFICATION_FIELDS = new Set(['iteration', 'command', 'status', 'exitCode', 'outputTail', 'workspaceFingerprint', 'recordedAt']);
 const CHECKER_FIELDS = new Set(['iteration', 'label', 'status', 'evidence', 'recordedAt']);
 const PHASES = new Set(['task', 'plan', 'implement', 'verify', 'checker', 'finish']);
 const STATUSES = new Set(['active', 'blocked', 'completed', 'cancelled']);
@@ -142,12 +142,17 @@ function validateVerification(value) {
     if (typeof item.outputTail !== 'string' || item.outputTail.length > TASK_LIMITS.outputChars) {
         invalid(`task.verification.outputTail must be a string of at most ${TASK_LIMITS.outputChars} characters.`);
     }
+    if (item.workspaceFingerprint !== undefined && (typeof item.workspaceFingerprint !== 'string' ||
+        !/^git-sha256:[a-f0-9]{64}$/.test(item.workspaceFingerprint))) {
+        invalid('task.verification.workspaceFingerprint must be a bounded Git SHA-256 fingerprint.');
+    }
     return {
         iteration: positiveIteration(item.iteration, 'task.verification.iteration'),
         command,
         status: evidenceStatus(item.status, 'task.verification.status'),
         exitCode: item.exitCode,
         outputTail: item.outputTail,
+        ...(item.workspaceFingerprint !== undefined ? { workspaceFingerprint: item.workspaceFingerprint } : {}),
         recordedAt: isoDate(item.recordedAt, 'task.verification.recordedAt'),
     };
 }

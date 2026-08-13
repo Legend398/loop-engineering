@@ -42,6 +42,8 @@ loop task finish "Checkout totals are correct and verified"
 Failed verification or checker review returns the task to implementation. Use
 `loop task replan "reason"` when the approach itself is wrong, and use
 `loop task status` or `loop task resume` for bounded read-only continuity.
+In Git workspaces, successful verification is fingerprinted; later tracked or
+untracked changes invalidate that evidence before checker approval or finish.
 The checker label records the role contract; it is not an identity or
 independence attestation.
 

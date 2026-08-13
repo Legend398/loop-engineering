@@ -1,5 +1,7 @@
-import { access } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { access, lstat, readlink } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
+import { createHash, type Hash } from 'node:crypto';
 import path from 'node:path';
 import {
   checkCircuitBreaker,
@@ -231,6 +233,218 @@ class OutputTail {
   }
 }
 
+interface GitResult {
+  exitCode: number | null;
+  stdout: Buffer;
+  stderr: Buffer;
+  stdoutOverflow: boolean;
+  stderrTruncated: boolean;
+  launchError?: {
+    message: string;
+    code?: string;
+  };
+}
+
+const GIT_OUTPUT_BYTES = 64 * 1024;
+const GIT_PATH_OUTPUT_BYTES = 4 * 1024 * 1024;
+const GIT_ERROR_BYTES = 8 * 1024;
+const MAX_UNTRACKED_PATHS = 10_000;
+
+class BoundedBytes {
+  private readonly chunks: Buffer[] = [];
+  private size = 0;
+  overflow = false;
+
+  constructor(private readonly limit: number) {}
+
+  add(chunk: Buffer): void {
+    if (this.overflow) return;
+    if (this.size + chunk.length > this.limit) {
+      const remaining = this.limit - this.size;
+      if (remaining > 0) this.chunks.push(chunk.subarray(0, remaining));
+      this.size = this.limit;
+      this.overflow = true;
+      return;
+    }
+    this.chunks.push(chunk);
+    this.size += chunk.length;
+  }
+
+  value(): Buffer {
+    return Buffer.concat(this.chunks, this.size);
+  }
+}
+
+function spawnGit(args: string[], cwd: string, stdoutLimit = GIT_OUTPUT_BYTES): Promise<GitResult> {
+  return new Promise((resolve) => {
+    const stdout = new BoundedBytes(stdoutLimit);
+    const stderr = new BoundedBytes(GIT_ERROR_BYTES);
+    let launchError: GitResult['launchError'];
+    const child = spawn('git', args, { cwd, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
+    child.stdout?.on('data', (chunk: Buffer) => stdout.add(chunk));
+    child.stderr?.on('data', (chunk: Buffer) => stderr.add(chunk));
+    child.on('error', (error: NodeJS.ErrnoException) => {
+      launchError = {
+        message: error.message,
+        ...(error.code ? { code: error.code } : {}),
+      };
+    });
+    child.on('close', (exitCode) => resolve({
+      exitCode,
+      stdout: stdout.value(),
+      stderr: stderr.value(),
+      stdoutOverflow: stdout.overflow,
+      stderrTruncated: stderr.overflow,
+      ...(launchError ? { launchError } : {}),
+    }));
+  });
+}
+
+interface GitHashResult {
+  exitCode: number | null;
+  digest: string;
+  stderr: Buffer;
+  stderrTruncated: boolean;
+  launchError?: GitResult['launchError'];
+}
+
+function hashGitOutput(args: string[], cwd: string): Promise<GitHashResult> {
+  return new Promise((resolve) => {
+    const digest = createHash('sha256');
+    const stderr = new BoundedBytes(GIT_ERROR_BYTES);
+    let launchError: GitResult['launchError'];
+    const child = spawn('git', args, { cwd, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
+    child.stdout?.on('data', (chunk: Buffer) => digest.update(chunk));
+    child.stderr?.on('data', (chunk: Buffer) => stderr.add(chunk));
+    child.on('error', (error: NodeJS.ErrnoException) => {
+      launchError = {
+        message: error.message,
+        ...(error.code ? { code: error.code } : {}),
+      };
+    });
+    child.on('close', (exitCode) => resolve({
+      exitCode,
+      digest: digest.digest('hex'),
+      stderr: stderr.value(),
+      stderrTruncated: stderr.overflow,
+      ...(launchError ? { launchError } : {}),
+    }));
+  });
+}
+
+function gitFailure(result: GitResult, fallback: string): Error {
+  const detail = result.launchError?.message ?? result.stderr.toString('utf8').trim() ?? fallback;
+  return new Error(detail || fallback);
+}
+
+function gitHashFailure(result: GitHashResult, fallback: string): Error {
+  const detail = result.launchError?.message ?? result.stderr.toString('utf8').trim() ?? fallback;
+  return new Error(detail || fallback);
+}
+
+function hashPart(hash: Hash, label: string, value: Buffer | string): void {
+  const bytes = typeof value === 'string' ? Buffer.from(value) : value;
+  hash.update(`${label}:${bytes.length}:`);
+  hash.update(bytes);
+}
+
+async function hashFile(hash: Hash, filePath: string): Promise<void> {
+  const info = await lstat(filePath);
+  if (info.isSymbolicLink()) {
+    hashPart(hash, 'link', await readlink(filePath));
+    return;
+  }
+  if (!info.isFile()) throw new Error(`Untracked path is not a regular file: ${filePath}`);
+  hash.update(`file:${info.size}:`);
+  await new Promise<void>((resolve, reject) => {
+    const stream = createReadStream(filePath);
+    stream.on('data', (chunk: Buffer | string) => hash.update(chunk));
+    stream.on('error', reject);
+    stream.on('end', resolve);
+  });
+}
+
+async function workspaceFingerprint(statePath: string): Promise<string | undefined> {
+  const probe = await spawnGit(['rev-parse', '--show-toplevel'], process.cwd());
+  if (probe.launchError?.code === 'ENOENT') return undefined;
+  if (probe.launchError) throw gitFailure(probe, 'git could not start while fingerprinting the workspace.');
+  if (probe.stdoutOverflow) throw new Error('git repository path exceeded the fingerprint output bound.');
+  if (probe.exitCode !== 0) {
+    if (/not a git repository/i.test(probe.stderr.toString('utf8'))) return undefined;
+    throw gitFailure(probe, 'git rev-parse failed while fingerprinting the workspace.');
+  }
+  const root = probe.stdout.toString('utf8').trim();
+  if (!root) throw new Error('git returned an empty repository path while fingerprinting the workspace.');
+
+  const head = await spawnGit(['rev-parse', '--verify', 'HEAD'], root);
+  if (head.launchError) throw gitFailure(head, 'git could not resolve HEAD while fingerprinting the workspace.');
+  if (head.stdoutOverflow) throw new Error('git HEAD output exceeded the fingerprint output bound.');
+  if (head.exitCode !== 0) {
+    if (/needed a single revision|unknown revision|ambiguous argument 'HEAD'/i.test(head.stderr.toString('utf8'))) return undefined;
+    throw gitFailure(head, 'git could not resolve HEAD while fingerprinting the workspace.');
+  }
+  const headValue = head.stdout.toString('utf8').trim();
+  if (!headValue) throw new Error('git returned an empty HEAD while fingerprinting the workspace.');
+
+  const relativeState = path.relative(root, path.resolve(statePath));
+  const stateInRepo = relativeState !== '' && !relativeState.startsWith(`..${path.sep}`) && relativeState !== '..' && !path.isAbsolute(relativeState);
+  const stateGitPath = stateInRepo ? relativeState.replace(/\\/g, '/') : undefined;
+  const diffArgs = ['diff', '--binary', '--no-ext-diff', '--no-textconv', 'HEAD', '--', '.'];
+  if (stateGitPath) diffArgs.push(`:(top,literal,exclude)${stateGitPath}`);
+  const diff = await hashGitOutput(diffArgs, root);
+  if (diff.launchError || diff.exitCode !== 0) throw gitHashFailure(diff, 'git diff failed while fingerprinting the workspace.');
+
+  const untracked = await spawnGit(['ls-files', '--others', '--exclude-standard', '-z'], root, GIT_PATH_OUTPUT_BYTES);
+  if (untracked.launchError || untracked.exitCode !== 0) throw gitFailure(untracked, 'git ls-files failed while fingerprinting the workspace.');
+  if (untracked.stdoutOverflow) throw new Error(`Untracked path output exceeded ${GIT_PATH_OUTPUT_BYTES} bytes.`);
+  const paths = untracked.stdout.toString('utf8').split('\0').filter(Boolean)
+    .filter((file) => file !== stateGitPath)
+    .sort();
+  if (paths.length > MAX_UNTRACKED_PATHS) throw new Error(`Workspace has more than ${MAX_UNTRACKED_PATHS} untracked files.`);
+
+  const hash = createHash('sha256');
+  hashPart(hash, 'format', 'loop-workspace-v1');
+  hashPart(hash, 'head', headValue);
+  hashPart(hash, 'diff-sha256', diff.digest);
+  for (const file of paths) {
+    hashPart(hash, 'path', file);
+    await hashFile(hash, path.join(root, ...file.split('/')));
+  }
+  return `git-sha256:${hash.digest('hex')}`;
+}
+
+async function ensureVerificationFresh(statePath: string, ledger: TaskLedger): Promise<boolean> {
+  const stored = ledger.task.verification?.workspaceFingerprint;
+  if (!stored) return true;
+
+  let current: string | undefined;
+  try {
+    current = await workspaceFingerprint(statePath);
+  } catch {
+    current = undefined;
+  }
+  if (current === stored) return true;
+
+  const now = new Date().toISOString();
+  const reason = current ? 'Workspace changed after verification.' : 'Workspace freshness could not be confirmed.';
+  ledger.task.phase = 'implement';
+  ledger.task.status = 'active';
+  delete ledger.task.verification;
+  delete ledger.task.checker;
+  delete ledger.task.blocker;
+  addAttempt(ledger, {
+    iteration: ledger.task.iteration,
+    timestamp: now,
+    action: 'workspace freshness check',
+    outcome: 'failure',
+    error: reason,
+  });
+  addTaskEvent(ledger, `${reason} Verification and checker evidence invalidated.`, now);
+  await writeTaskLedger(statePath, ledger);
+  console.error(`${reason} Record the implementation again and rerun verification.`);
+  return false;
+}
+
 async function spawnVerification(argv: string[]): Promise<{ exitCode: number | null; outputTail: string; error?: string }> {
   let resolved: { executable: string; args: string[] };
   try {
@@ -306,13 +520,27 @@ async function verify(statePath: string, args: string[]): Promise<number> {
   requirePhase(ledger, ['verify'], 'verify');
   const result = await spawnVerification(command);
   const now = new Date().toISOString();
-  const passed = result.exitCode === 0 && !result.error;
+  let passed = result.exitCode === 0 && !result.error;
+  let fingerprint: string | undefined;
+  let fingerprintError: string | undefined;
+  if (passed) {
+    try {
+      fingerprint = await workspaceFingerprint(statePath);
+    } catch (error) {
+      fingerprintError = `Workspace fingerprint failed: ${error instanceof Error ? error.message : String(error)}`;
+      passed = false;
+    }
+  }
+  const outputTail = fingerprintError
+    ? fingerprintError.slice(-TASK_LIMITS.outputChars)
+    : result.outputTail;
   ledger.task.verification = {
     iteration: ledger.task.iteration,
     command,
     status: passed ? 'pass' : 'fail',
     exitCode: result.exitCode,
-    outputTail: result.outputTail,
+    outputTail,
+    ...(fingerprint ? { workspaceFingerprint: fingerprint } : {}),
     recordedAt: now,
   };
   delete ledger.task.checker;
@@ -321,7 +549,7 @@ async function verify(statePath: string, args: string[]): Promise<number> {
     timestamp: now,
     action: `verify ${displayCommand(command)}`,
     outcome: passed ? 'success' : 'failure',
-    ...(passed ? {} : { error: boundedTaskText(result.error ?? (result.outputTail || `Verification exited ${result.exitCode}.`), 'verification error', 2000) }),
+    ...(passed ? {} : { error: boundedTaskText(result.error ?? fingerprintError ?? (outputTail || `Verification exited ${result.exitCode}.`), 'verification error', 2000) }),
   });
   if (passed) {
     ledger.task.phase = 'checker';
@@ -347,6 +575,7 @@ async function check(statePath: string, args: string[]): Promise<number> {
   if (ledger.task.verification?.status !== 'pass' || ledger.task.verification.iteration !== ledger.task.iteration) {
     throw new Error('check requires same-iteration verification PASS.');
   }
+  if (!await ensureVerificationFresh(statePath, ledger)) return 2;
   const now = new Date().toISOString();
   const label = boundedTaskText(checker.values[0], 'checker label', 160);
   ledger.task.checker = { iteration: ledger.task.iteration, label, status: verdict, evidence, recordedAt: now };
@@ -401,6 +630,7 @@ async function finish(statePath: string, args: string[]): Promise<number> {
   const ledger = await readTaskLedger(statePath);
   requirePhase(ledger, ['finish'], 'finish');
   if (!verificationAndCheckerPassed(ledger.task)) throw new Error('finish requires same-iteration verification PASS and checker PASS.');
+  if (!await ensureVerificationFresh(statePath, ledger)) return 2;
   ledger.task.status = 'completed';
   ledger.task.result = summary;
   delete ledger.task.blocker;

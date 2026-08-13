@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
@@ -15,11 +15,30 @@ async function freshState(t) {
   return path.join(dir, 'custom', 'task.json');
 }
 
-function runTask(statePath, command, args = []) {
+function runTask(statePath, command, args = [], cwd) {
   return spawnSync(process.execPath, [cli, 'task', command, '--state', statePath, ...args], {
     encoding: 'utf8',
     timeout: 10_000,
+    ...(cwd ? { cwd } : {}),
   });
+}
+
+function runGit(cwd, args) {
+  const result = spawnSync('git', args, { cwd, encoding: 'utf8', timeout: 10_000 });
+  assert.equal(result.status, 0, result.stderr);
+}
+
+async function freshGitRepo(t) {
+  const dir = await mkdtemp(path.join(tmpdir(), 'loop-task-git-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  runGit(dir, ['init', '--quiet']);
+  runGit(dir, ['config', 'user.email', 'loop-tests@example.invalid']);
+  runGit(dir, ['config', 'user.name', 'Loop Tests']);
+  await writeFile(path.join(dir, '.gitignore'), '.loop/\n');
+  await writeFile(path.join(dir, 'tracked.txt'), 'committed\n');
+  runGit(dir, ['add', '.gitignore', 'tracked.txt']);
+  runGit(dir, ['commit', '--quiet', '-m', 'fixture']);
+  return { dir, statePath: path.join(dir, '.loop', 'task.json') };
 }
 
 function expectOk(result) {
@@ -30,16 +49,30 @@ async function readState(statePath) {
   return JSON.parse(await readFile(statePath, 'utf8'));
 }
 
-async function advanceToVerify(statePath) {
-  expectOk(runTask(statePath, 'start', ['Exercise task workflow']));
-  expectOk(runTask(statePath, 'plan', ['Implement behavior', 'Run focused tests']));
-  expectOk(runTask(statePath, 'implemented', ['Implemented behavior', '--file', 'tools/loop-context/src/task-cli.ts']));
+async function advanceToVerify(statePath, cwd) {
+  expectOk(runTask(statePath, 'start', ['Exercise task workflow'], cwd));
+  expectOk(runTask(statePath, 'plan', ['Implement behavior', 'Run focused tests'], cwd));
+  expectOk(runTask(statePath, 'implemented', ['Implemented behavior', '--file', 'tools/loop-context/src/task-cli.ts'], cwd));
 }
 
-async function advanceToFinish(statePath) {
-  await advanceToVerify(statePath);
-  expectOk(runTask(statePath, 'verify', ['--', process.execPath, '-e', 'console.log("verified")']));
-  expectOk(runTask(statePath, 'check', ['pass', 'reviewed independently', '--checker', 'recorded reviewer label']));
+async function advanceToFinish(statePath, cwd) {
+  await advanceToVerify(statePath, cwd);
+  expectOk(runTask(statePath, 'verify', ['--', process.execPath, '-e', 'console.log("verified")'], cwd));
+  expectOk(runTask(statePath, 'check', ['pass', 'reviewed independently', '--checker', 'recorded reviewer label'], cwd));
+}
+
+async function expectStaleCheckReturnsToImplement(statePath, cwd) {
+  const result = runTask(statePath, 'check', ['pass', 'stale review', '--checker', 'fixture checker'], cwd);
+  assert.equal(result.status, 2, result.stderr);
+  const state = await readState(statePath);
+  assert.equal(state.task.phase, 'implement');
+  assert.equal(state.task.status, 'active');
+  assert.equal(state.task.verification, undefined);
+  assert.equal(state.task.checker, undefined);
+
+  const repeated = runTask(statePath, 'check', ['pass', 'still stale', '--checker', 'fixture checker'], cwd);
+  assert.equal(repeated.status, 1);
+  assert.match(repeated.stderr, /check requires an active task in phase checker; current state is implement\/active/);
 }
 
 test('task help documents every supported command', async (t) => {
@@ -193,6 +226,96 @@ test('verify preserves repeated spaces and an empty argument in exact argv', asy
   assert.match(result.stdout, /\["alpha  beta",""\]/);
   const state = await readState(statePath);
   assert.deepEqual(state.task.verification.command, [process.execPath, '-e', script, 'alpha  beta', '']);
+});
+
+test('unchanged Git workspace accepts check and finish with a bounded fingerprint', async (t) => {
+  const { dir, statePath } = await freshGitRepo(t);
+  await advanceToVerify(statePath, dir);
+  expectOk(runTask(statePath, 'verify', ['--', process.execPath, '-e', 'process.exit(0)'], dir));
+
+  const verified = await readState(statePath);
+  assert.match(verified.task.verification.workspaceFingerprint, /^git-sha256:[a-f0-9]{64}$/);
+  assert.ok(verified.task.verification.workspaceFingerprint.length < 100);
+
+  expectOk(runTask(statePath, 'check', ['pass', 'workspace unchanged', '--checker', 'fixture checker'], dir));
+  expectOk(runTask(statePath, 'finish', ['Delivered unchanged workspace'], dir));
+  assert.equal((await readState(statePath)).task.status, 'completed');
+});
+
+test('tracked edit after verification invalidates evidence before check', async (t) => {
+  const { dir, statePath } = await freshGitRepo(t);
+  await advanceToVerify(statePath, dir);
+  expectOk(runTask(statePath, 'verify', ['--', process.execPath, '-e', 'process.exit(0)'], dir));
+  await writeFile(path.join(dir, 'tracked.txt'), 'edited after verification\n');
+
+  await expectStaleCheckReturnsToImplement(statePath, dir);
+});
+
+const TRACKED_MUTATIONS = [
+  ['staged add', async (dir) => {
+    await writeFile(path.join(dir, 'staged-add.txt'), 'staged after verification\n');
+    runGit(dir, ['add', 'staged-add.txt']);
+  }],
+  ['staged edit', async (dir) => {
+    await writeFile(path.join(dir, 'tracked.txt'), 'staged edit after verification\n');
+    runGit(dir, ['add', 'tracked.txt']);
+  }],
+  ['staged delete', async (dir) => runGit(dir, ['rm', '--quiet', 'tracked.txt'])],
+  ['unstaged tracked deletion', async (dir) => unlink(path.join(dir, 'tracked.txt'))],
+];
+
+for (const [label, mutate] of TRACKED_MUTATIONS) {
+  test(`${label} after verification invalidates evidence before check`, async (t) => {
+    const { dir, statePath } = await freshGitRepo(t);
+    await advanceToVerify(statePath, dir);
+    expectOk(runTask(statePath, 'verify', ['--', process.execPath, '-e', 'process.exit(0)'], dir));
+
+    await mutate(dir);
+
+    await expectStaleCheckReturnsToImplement(statePath, dir);
+  });
+}
+
+for (const mutation of ['add', 'edit', 'delete']) {
+  test(`untracked ${mutation} after verification invalidates evidence before check`, async (t) => {
+    const { dir, statePath } = await freshGitRepo(t);
+    const untracked = path.join(dir, 'untracked.txt');
+    if (mutation !== 'add') await writeFile(untracked, 'untracked baseline\n');
+    await advanceToVerify(statePath, dir);
+    expectOk(runTask(statePath, 'verify', ['--', process.execPath, '-e', 'process.exit(0)'], dir));
+
+    if (mutation === 'add') await writeFile(untracked, 'added after verification\n');
+    if (mutation === 'edit') await writeFile(untracked, 'edited after verification\n');
+    if (mutation === 'delete') await unlink(untracked);
+
+    await expectStaleCheckReturnsToImplement(statePath, dir);
+  });
+}
+
+test('workspace change after checker invalidates evidence before finish', async (t) => {
+  const { dir, statePath } = await freshGitRepo(t);
+  await advanceToFinish(statePath, dir);
+  await writeFile(path.join(dir, 'tracked.txt'), 'edited after checker\n');
+
+  const result = runTask(statePath, 'finish', ['Must not accept stale evidence'], dir);
+  assert.equal(result.status, 2, result.stderr);
+  const state = await readState(statePath);
+  assert.equal(state.task.phase, 'implement');
+  assert.equal(state.task.status, 'active');
+  assert.equal(state.task.verification, undefined);
+  assert.equal(state.task.checker, undefined);
+});
+
+test('non-Git workspace retains the existing task workflow', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'loop-task-non-git-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const statePath = path.join(dir, '.loop', 'task.json');
+
+  await advanceToFinish(statePath, dir);
+  expectOk(runTask(statePath, 'finish', ['Delivered outside Git'], dir));
+  const state = await readState(statePath);
+  assert.equal(state.task.status, 'completed');
+  assert.equal(state.task.verification.workspaceFingerprint, undefined);
 });
 
 test('verify rejects a path-qualified Windows command shim without invoking a shell', { skip: process.platform !== 'win32' }, async (t) => {
