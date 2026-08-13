@@ -10,17 +10,41 @@ Loop Engineering ships several focused CLIs (`loop-init`, `loop-audit`, `loop-co
 
 1. One binary people can remember  
 2. **Pass-through** to existing tools (same flags)  
-3. **doctor** / **status** for activation and day-2 habit  
+3. **task** for bounded day-to-day engineering
+4. **doctor** / **status** for recurring-loop activation and health
 
 ```text
+npx @cobusgreyling/loop task start "Fix checkout retry handling"
 npx @cobusgreyling/loop init . -p daily-triage -t grok
 npx @cobusgreyling/loop doctor .
 ```
+
+## Day-to-day task loop
+
+`loop task` keeps a meaningful change moving without approval ceremonies:
+
+```bash
+loop task start "<objective>" [--state <path>]
+loop task status [--json] [--state <path>]
+loop task plan "<step 1>" "<step 2>" ...
+loop task implemented "<summary>" --file <path> [--file <path>]
+loop task verify "--" <executable> [args...]
+loop task check pass|fail "<evidence>" --checker <label>
+loop task replan "<reason>"
+loop task resume [--json]
+loop task finish "<summary>"
+loop task cancel "<reason>"
+```
+
+The default flow is task → plan → implement → verify → checker → finish. Checker independence is a role contract enforced by maker/checker separation; the CLI only records the caller-supplied checker label and evidence and cannot authenticate identity. Only blocking checker findings loop back. The optional `--state <path>` may appear anywhere before `--`, and the default `.loop/` state directory should be ignored (the scaffold adds it to `.gitignore`).
+
+On Windows, `loop task verify` rejects explicitly path-qualified `.cmd` and `.bat` executables. Prefer `npx <tool>`, a command resolved from `PATH`, or a direct executable/JavaScript entry such as `node path/to/cli.js`.
 
 ## Map (new → same as before)
 
 | Front door | Existing package / command |
 |------------|----------------------------|
+| `loop task …` | Built-in bounded task state machine |
 | `loop init …` | `npx @cobusgreyling/loop-init …` |
 | `loop audit …` | `npx @cobusgreyling/loop-audit …` |
 | `loop cost …` | `npx @cobusgreyling/loop-cost …` |
@@ -50,12 +74,12 @@ npx @cobusgreyling/loop doctor . --json
 ## Forks & contributors
 
 - **Forks that already call `loop-init` / `loop-audit`:** change nothing.  
-- **New docs / skills / Actions:** prefer `loop`.  
+- **New day-to-day engineering docs / skills:** lead with `loop task`; keep `loop init` for recurring patterns.
 - **Contributors adding tools:** keep a dedicated package; add a one-line pass-through in `tools/loop` if it should be discoverable.
 
 ## Agent skill
 
-[`skills/install-loop/SKILL.md`](../skills/install-loop/SKILL.md) — copy into `.grok/skills`, `.claude/skills`, etc., or point agents at this path.
+[`skills/execution-loop/SKILL.md`](../skills/execution-loop/SKILL.md) is the default bounded-work skill scaffolded for supported tools. [`skills/install-loop/SKILL.md`](../skills/install-loop/SKILL.md) remains the recurring-loop installer.
 
 ## Publish
 

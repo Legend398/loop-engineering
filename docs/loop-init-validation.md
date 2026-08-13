@@ -27,7 +27,11 @@ npx @cobusgreyling/loop-init . --pattern daily-triage --tool claude
 The scaffold matrix in `tools/loop-init/test/cli.test.mjs` runs every supported
 pattern × tool combination in a fresh temporary directory. It verifies the
 state, observability, constraints, primary skill, and tool-specific files, plus
-the presence or absence of circuit-breaker and intake assets where required.
+the presence or absence of circuit-breaker and intake assets where required. It
+also verifies the default `codebase-map` skill across the full matrix and the
+marked Codex `AGENTS.md` activation block. Dedicated tests enforce skill/template
+byte parity, map-first wording, existing `AGENTS.md` preservation, idempotence,
+and dry-run reporting.
 
 \`\`\`
 cd tools/loop-init

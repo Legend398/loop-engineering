@@ -1,4 +1,4 @@
-# Quickstart — 5 minutes to your first loop
+# Quickstart — 5 minutes to your first task loop
 
 > **Stop prompting. Design the loop. Get a score.**
 
@@ -6,17 +6,36 @@ Watch the score climb: [loop-audit-demo.gif](../assets/visuals/loop-audit-demo.g
 
 Landed from [X](https://x.com), the [showcase](https://cobusgreyling.github.io/loop-engineering/), or a friend's README? This is the shortest path from zero to a running loop.
 
-**Week one rule:** report only. No auto-fix, no auto-merge. Read what the loop writes before you let it act.
-
 **Front door:** prefer the unified CLI (`@cobusgreyling/loop`). Dedicated packages (`loop-init`, `loop-audit`, …) stay fully supported — see [cli-front-door.md](./cli-front-door.md).
 
-## 1. Pick your pain (30 seconds)
+## Day-to-day work: `loop task`
+
+For a meaningful change, build, fix, or refactor, use the bounded execution path:
+
+```bash
+npx @cobusgreyling/loop task start "Fix checkout retry handling"
+npx @cobusgreyling/loop task status
+npx @cobusgreyling/loop task plan "Inspect retry behavior and tests" "Implement the fix" "Verify and check the diff"
+# edit files
+npx @cobusgreyling/loop task implemented "Fixed retry classification" --file src/checkout.ts --file test/checkout.test.ts
+npx @cobusgreyling/loop task verify "--" npm test -- checkout.test.ts
+npx @cobusgreyling/loop task check pass "Targeted test and fresh review passed" --checker reviewer-1
+npx @cobusgreyling/loop task finish "Checkout retry handling fixed and verified"
+```
+
+Use `check fail`, then `replan`, when the checker finds a blocking issue. Checker independence comes from maker/checker role separation; the CLI records the caller-supplied checker label and evidence but cannot authenticate identity. Use `resume` after an interrupted session and `cancel "<reason>"` when the task is intentionally abandoned. Agents scaffolded by `loop init` receive the `execution-loop` skill and a `.gitignore` entry for `.loop/`; without scaffolding, ignore `.loop/` before the first default-state start. If the CLI is unavailable, keep the same task → plan → implement → verify → checker → finish phases in memory without installing it.
+
+On Windows, `loop task verify` rejects an explicitly path-qualified `.cmd` or `.bat` executable. Prefer `npx <tool>`, a command resolved from `PATH`, or a direct executable/JavaScript entry such as `node path/to/cli.js`.
+
+## 1. Pick a recurring pattern (30 seconds)
 
 Not sure which loop? Use the [interactive pattern picker](https://cobusgreyling.github.io/loop-engineering/#interactive) on the showcase — it recommends a pattern, scaffold command, first `/loop` line, and a token estimate.
 
 Or start with **Daily Triage** if you just want to learn loop discipline with low risk.
 
-## 2. Scaffold in your repo (60 seconds)
+The patterns below are for scheduled or repeated operations. They remain fully supported alongside the day-to-day task loop.
+
+## 2. Scaffold a recurring loop (60 seconds)
 
 Run this in the root of any git project (no clone required):
 

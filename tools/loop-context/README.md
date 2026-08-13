@@ -25,6 +25,26 @@ npx @cobusgreyling/loop-context --help
 cd tools/loop-context && npm install && npm test
 ```
 
+## Execution task loop
+
+The `loop` front door keeps one compact `.loop/task.json` record and enforces the
+useful working order without adding approval ceremonies:
+
+```bash
+loop task start "Fix checkout totals"
+loop task plan "Locate the calculation path" "Add a regression test" "Implement the fix"
+loop task implemented "Corrected line-item rounding" --file src/checkout.ts --file test/checkout.test.ts
+loop task verify "--" npm test -- checkout.test.ts
+loop task check pass "Focused regression and diff review passed" --checker independent-reviewer
+loop task finish "Checkout totals are correct and verified"
+```
+
+Failed verification or checker review returns the task to implementation. Use
+`loop task replan "reason"` when the approach itself is wrong, and use
+`loop task status` or `loop task resume` for bounded read-only continuity.
+The checker label records the role contract; it is not an identity or
+independence attestation.
+
 ## The ledger
 
 The tool reads a **run ledger** — a JSON record of the loop's goal and its attempts:
@@ -37,11 +57,25 @@ The tool reads a **run ledger** — a JSON record of the loop's goal and its att
       "error": "Error: connect ECONNREFUSED 127.0.0.1:5432", "tokensUsed": 1500 },
     { "iteration": 2, "action": "run migration again", "outcome": "failure",
       "error": "Error: connect ECONNREFUSED 127.0.0.1:5432", "tokensUsed": 1400 }
-  ]
+  ],
+  "handoff": {
+    "schema": 1,
+    "state": "running",
+    "brief": "Migration failure isolated to connection setup.",
+    "nextStep": "Run the focused integration test after updating the fixture.",
+    "focusPaths": ["src/migrate.ts", "test/migrate.test.ts"],
+    "proof": ["Unit tests pass; integration test still fails."],
+    "needs": [],
+    "turnsLeft": 2
+  }
 }
 ```
 
 `outcome` is `success | failure | noop`. `error` and `tokensUsed` are optional.
+`handoff` is optional and uses a separate schema-1 continuity record. `running`
+requires a next step and positive turns, `waiting` requires at least one need,
+and `finished` omits the next step and has zero turns. Focus paths are normalized,
+project-relative forward-slash paths.
 
 ## Usage
 
@@ -51,6 +85,9 @@ loop-context --check --ledger run.json
 
 # Compact context block for the next prompt
 loop-context --inject --ledger run.json
+
+# Read-only bounded continuity handoff (also: loop context --resume ...)
+loop-context --resume --ledger run.json
 
 # Factual rollup of the run
 loop-context --summary --ledger run.json --json
@@ -72,8 +109,16 @@ cat run.json | loop-context --check
 | `--token-budget <n>` | none | Escalate when cumulative tokens reach the cap |
 | `--window <n>` | 5 | Attempts kept when pruning |
 | `--max-trace-lines <n>` | 8 | Stack-trace lines kept when pruning |
+| `--resume` | off | Validate and print the ledger's optional handoff without mutation |
 
 Exit codes: `0` continue · `2` escalate · `1` error.
+
+Resume output includes the canonical ledger goal and is deterministic and bounded
+to 64 lines and 6000 characters.
+Current repository files, diffs, and tests are authoritative over a saved handoff.
+Context injection is independently bounded to 64 lines and 6000 characters. It
+includes at most the eight most-recent unique actions and six error patterns,
+truncates oversized fields, and reports omitted material.
 
 ## Resolving the token budget from a pattern
 
@@ -117,9 +162,12 @@ loop-context --check --ledger run.json --daily-budget-from-pattern ci-sweeper \
 | `--daily-state-dir <dir>` | `.loop-context` | Where `daily-spend.<pattern>.json` is kept |
 | `--on-exceed <script>` | none | On any escalate, pipe the `BreakerDecision` as JSON to this script's stdin |
 
-Each `--check` call adds the ledger's newest attempt's `tokensUsed` to a per-pattern
-state file (`daily-spend.<pattern-id>.json`, `{ "date": "...", "tokensUsedToday": N }`),
-rolling over to zero when the stored date isn't today (UTC). Once the running total
+Each distinct newest attempt adds its first observed `tokensUsed` value once to a
+per-pattern state file. Daily-budget mode requires a unique, date-like `startedAt`
+run identity and combines it with the attempt's positive `iteration`. The tool serializes concurrent
+updates with a bounded lock, validates existing state, and replaces the file
+atomically. Re-checking an unchanged ledger therefore does not double count spend.
+State rolls over to zero when the stored date isn't today (UTC). Once the running total
 reaches the pattern's suggested daily cap, `--check` escalates with trigger
 `daily-budget` — but only if no per-run trigger (stagnation, no-progress, token-budget,
 max-iterations) already fired; per-run reasons always take priority. `--budget-level`,
@@ -152,7 +200,8 @@ fs.writeFileSync('run.json', JSON.stringify(ledger, null, 2));
 loop-context --check --ledger run.json || { loop-context --inject --ledger run.json; exit 2; }
 ```
 
-Initialize once at loop start: `{ \"goal\": \"Get CI green on main\", \"attempts\": [] }`.
+Initialize once at loop start with a unique, stable timestamp, for example:
+`{ \"goal\": \"Get CI green on main\", \"startedAt\": \"<ISO-8601 run start>\", \"attempts\": [] }`.
 
 ## In a loop
 
@@ -172,6 +221,8 @@ import {
   pruneLedger,
   summarizeAttempts,
   buildContextInjection,
+  validateHandoff,
+  renderHandoff,
 } from '@cobusgreyling/loop-context';
 
 const decision = checkCircuitBreaker(ledger);
