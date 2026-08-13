@@ -38,8 +38,10 @@
 > [PROVENANCE.md](PROVENANCE.md).
 
 <p align="center">
-  <img src="assets/visuals/LE5.jpeg" alt="Loop Engineering — design the system that prompts your agents" width="100%" />
+  <img src="assets/visuals/execution-loop-workflow.svg" alt="Task to plan to implement to verify to checker to finish, with failed evidence looping back" width="100%" />
 </p>
+
+<p align="center"><strong>Task → plan → implement → verify → checker → finish</strong><br/><sub>A practical execution loop for normal coding work. Clear reversible steps continue automatically; failed evidence returns to the work.</sub></p>
 
 <p align="center">
   <strong>Start in 5 minutes</strong> ·
@@ -67,6 +69,21 @@ npx @cobusgreyling/loop doctor .
 ```
 
 The added `loop task` path carries a bounded change through task → plan → implement → verify → checker → finish. The upstream `loop init` flow still scaffolds recurring patterns, state, and budgets, while `loop doctor` turns audit + sync into top-3 next actions. Swap `--tool` for `claude`, `codex`, or `opencode`. Optional: `--with-foundry` for a versioned harness stack. Legacy `npx @cobusgreyling/loop-init .` still works. See [docs/cli-front-door.md](docs/cli-front-door.md).
+
+<p align="center">
+  <img src="assets/visuals/execution-loop-system.svg" alt="Codebase Memory discovery feeds implementation, real verification, fresh checking, bounded task state, resume, and workspace freshness" width="100%" />
+</p>
+
+Current files and tests remain authoritative. The saved task record is deliberately small, and any Git workspace change after verification invalidates the old evidence before checking or finishing.
+
+<details>
+<summary><strong>Original Loop Engineering showcase</strong></summary>
+
+<p align="center">
+  <img src="assets/visuals/LE5.jpeg" alt="Loop Engineering — design the system that prompts your agents" width="100%" />
+</p>
+
+</details>
 
 <p align="center">
   <a href="docs/QUICKSTART.md">

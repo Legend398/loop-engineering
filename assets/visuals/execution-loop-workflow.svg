@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 480" role="img" aria-labelledby="title desc">
+  <title id="title">The Loop Engineering day-to-day execution workflow</title>
+  <desc id="desc">A task moves through plan, implement, verify, checker, and finish. Failed verification returns to implementation, while a blocking checker result returns to planning.</desc>
+  <defs>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b111b"/>
+      <stop offset="1" stop-color="#111a28"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#3ee8c5"/>
+      <stop offset="1" stop-color="#5b9dff"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000814" flood-opacity="0.45"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6f86a4"/>
+    </marker>
+    <marker id="arrow-cyan" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3ee8c5"/>
+    </marker>
+    <style>
+      .eyebrow { fill: #3ee8c5; font: 700 13px ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: 2px; }
+      .heading { fill: #f4f8ff; font: 700 30px Inter, Segoe UI, Arial, sans-serif; }
+      .subheading { fill: #9fb0c7; font: 400 15px Inter, Segoe UI, Arial, sans-serif; }
+      .step { fill: #8ea2bd; font: 700 12px ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: 1px; }
+      .card-title { fill: #f4f8ff; font: 700 18px Inter, Segoe UI, Arial, sans-serif; }
+      .card-copy { fill: #9fb0c7; font: 400 13px Inter, Segoe UI, Arial, sans-serif; }
+      .loop-label { fill: #c0cede; font: 600 12px Inter, Segoe UI, Arial, sans-serif; }
+      .principle { fill: #dce7f5; font: 600 13px Inter, Segoe UI, Arial, sans-serif; }
+    </style>
+  </defs>
+
+  <rect x="1" y="1" width="1198" height="478" rx="26" fill="url(#panel)" stroke="#223047" stroke-width="2"/>
+  <rect x="34" y="29" width="210" height="28" rx="14" fill="#102a2a" stroke="#245b54"/>
+  <text x="50" y="48" class="eyebrow">OUR MAIN ADDITION</text>
+  <text x="34" y="91" class="heading">One real working loop for everyday coding</text>
+  <text x="34" y="119" class="subheading">Clear reversible work keeps moving. Evidence—not ceremony—decides when the task is finished.</text>
+
+  <g filter="url(#shadow)">
+    <g transform="translate(34 157)">
+      <rect width="164" height="126" rx="16" fill="#111c2b" stroke="#2c415d"/>
+      <text x="18" y="27" class="step">01</text>
+      <text x="18" y="57" class="card-title">Task</text>
+      <text x="18" y="82" class="card-copy">Define outcome</text>
+      <text x="18" y="102" class="card-copy">and stop condition</text>
+    </g>
+    <g transform="translate(227 157)">
+      <rect width="164" height="126" rx="16" fill="#111c2b" stroke="#2c415d"/>
+      <text x="18" y="27" class="step">02</text>
+      <text x="18" y="57" class="card-title">Plan</text>
+      <text x="18" y="82" class="card-copy">Smallest useful</text>
+      <text x="18" y="102" class="card-copy">path and proof</text>
+    </g>
+    <g transform="translate(420 157)">
+      <rect width="164" height="126" rx="16" fill="#102725" stroke="#3ee8c5" stroke-width="2"/>
+      <text x="18" y="27" class="step">03</text>
+      <text x="18" y="57" class="card-title">Implement</text>
+      <text x="18" y="82" class="card-copy">Change the code</text>
+      <text x="18" y="102" class="card-copy">without scope creep</text>
+    </g>
+    <g transform="translate(613 157)">
+      <rect width="164" height="126" rx="16" fill="#102137" stroke="#5b9dff" stroke-width="2"/>
+      <text x="18" y="27" class="step">04</text>
+      <text x="18" y="57" class="card-title">Verify</text>
+      <text x="18" y="82" class="card-copy">Run the real command</text>
+      <text x="18" y="102" class="card-copy">capture exit + output</text>
+    </g>
+    <g transform="translate(806 157)">
+      <rect width="164" height="126" rx="16" fill="#211e2b" stroke="#aa8ad8"/>
+      <text x="18" y="27" class="step">05</text>
+      <text x="18" y="57" class="card-title">Checker</text>
+      <text x="18" y="82" class="card-copy">Fresh review of</text>
+      <text x="18" y="102" class="card-copy">behavior and diff</text>
+    </g>
+    <g transform="translate(999 157)">
+      <rect width="167" height="126" rx="16" fill="#102725" stroke="#3ee8c5" stroke-width="2"/>
+      <text x="18" y="27" class="step">06</text>
+      <text x="18" y="57" class="card-title">Finish</text>
+      <text x="18" y="82" class="card-copy">Report evidence</text>
+      <text x="18" y="102" class="card-copy">and remaining risk</text>
+    </g>
+  </g>
+
+  <g fill="none" stroke="#6f86a4" stroke-width="2" marker-end="url(#arrow)">
+    <path d="M 201 220 H 219"/>
+    <path d="M 394 220 H 412"/>
+    <path d="M 587 220 H 605"/>
+    <path d="M 780 220 H 798"/>
+    <path d="M 973 220 H 991"/>
+  </g>
+
+  <path d="M 695 288 V 345 H 502 V 292" fill="none" stroke="#5b9dff" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arrow-cyan)"/>
+  <text x="558" y="335" class="loop-label">verification fails → diagnose, repair, verify again</text>
+
+  <path d="M 888 288 V 386 H 309 V 292" fill="none" stroke="#aa8ad8" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arrow)"/>
+  <text x="510" y="376" class="loop-label">blocking finding → replan only when the approach is wrong</text>
+
+  <rect x="34" y="419" width="1132" height="35" rx="17.5" fill="#0e1724" stroke="#223047"/>
+  <circle cx="62" cy="436.5" r="4" fill="#3ee8c5"/>
+  <text x="76" y="441" class="principle">No approval ceremony</text>
+  <circle cx="334" cy="436.5" r="4" fill="#5b9dff"/>
+  <text x="348" y="441" class="principle">Actual verification commands</text>
+  <circle cx="673" cy="436.5" r="4" fill="#aa8ad8"/>
+  <text x="687" y="441" class="principle">Fresh checker for behavior changes</text>
+  <circle cx="1030" cy="436.5" r="4" fill="#3ee8c5"/>
+  <text x="1044" y="441" class="principle">Bounded state</text>
+</svg>

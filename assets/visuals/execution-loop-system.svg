@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
+  <title id="title">How the Loop Engineering derivative works</title>
+  <desc id="desc">Codebase Memory provides focused context, implementation is verified with a real command, a checker reviews fresh evidence, and bounded task state supports resume. Git workspace changes invalidate stale evidence.</desc>
+  <defs>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b111b"/>
+      <stop offset="1" stop-color="#111a28"/>
+    </linearGradient>
+    <linearGradient id="state" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#102725"/>
+      <stop offset="0.55" stop-color="#102137"/>
+      <stop offset="1" stop-color="#211e2b"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000814" flood-opacity="0.42"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6f86a4"/>
+    </marker>
+    <marker id="arrow-cyan" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3ee8c5"/>
+    </marker>
+    <style>
+      .eyebrow { fill: #3ee8c5; font: 700 13px ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: 2px; }
+      .heading { fill: #f4f8ff; font: 700 29px Inter, Segoe UI, Arial, sans-serif; }
+      .subheading { fill: #9fb0c7; font: 400 15px Inter, Segoe UI, Arial, sans-serif; }
+      .card-kicker { fill: #8ea2bd; font: 700 11px ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: 1.4px; }
+      .card-title { fill: #f4f8ff; font: 700 18px Inter, Segoe UI, Arial, sans-serif; }
+      .card-copy { fill: #a8b8cd; font: 400 13px Inter, Segoe UI, Arial, sans-serif; }
+      .state-title { fill: #f4f8ff; font: 700 18px ui-monospace, SFMono-Regular, Consolas, monospace; }
+      .chip { fill: #dbe7f5; font: 600 12px Inter, Segoe UI, Arial, sans-serif; }
+      .small { fill: #91a5bf; font: 500 12px Inter, Segoe UI, Arial, sans-serif; }
+      .warning { fill: #f6c56f; font: 700 13px Inter, Segoe UI, Arial, sans-serif; }
+    </style>
+  </defs>
+
+  <rect x="1" y="1" width="1198" height="558" rx="26" fill="url(#panel)" stroke="#223047" stroke-width="2"/>
+  <text x="38" y="48" class="eyebrow">HOW THE ADDITIONS WORK TOGETHER</text>
+  <text x="38" y="88" class="heading">Compact context in. Fresh evidence out.</text>
+  <text x="38" y="116" class="subheading">The repository remains the source of truth; the loop only keeps enough state to continue and prove the work.</text>
+
+  <g filter="url(#shadow)">
+    <g transform="translate(38 157)">
+      <rect width="248" height="132" rx="17" fill="#111c2b" stroke="#2c415d"/>
+      <text x="18" y="28" class="card-kicker">DISCOVER</text>
+      <text x="18" y="58" class="card-title">Codebase Memory first</text>
+      <text x="18" y="83" class="card-copy">Map stays outside the prompt.</text>
+      <text x="18" y="104" class="card-copy">Use focused snippets; fall back</text>
+      <text x="18" y="123" class="card-copy">to local search when needed.</text>
+    </g>
+    <g transform="translate(330 157)">
+      <rect width="220" height="132" rx="17" fill="#102725" stroke="#3ee8c5" stroke-width="2"/>
+      <text x="18" y="28" class="card-kicker">BUILD</text>
+      <text x="18" y="58" class="card-title">Small implementation</text>
+      <text x="18" y="83" class="card-copy">Plan only what is needed.</text>
+      <text x="18" y="104" class="card-copy">Edit current files using the</text>
+      <text x="18" y="123" class="card-copy">project's existing patterns.</text>
+    </g>
+    <g transform="translate(594 157)">
+      <rect width="220" height="132" rx="17" fill="#102137" stroke="#5b9dff" stroke-width="2"/>
+      <text x="18" y="28" class="card-kicker">PROVE</text>
+      <text x="18" y="58" class="card-title">Real verification</text>
+      <text x="18" y="83" class="card-copy">Run exact argv without a shell.</text>
+      <text x="18" y="104" class="card-copy">Record command, exit code,</text>
+      <text x="18" y="123" class="card-copy">and bounded output.</text>
+    </g>
+    <g transform="translate(858 157)">
+      <rect width="304" height="132" rx="17" fill="#211e2b" stroke="#aa8ad8"/>
+      <text x="18" y="28" class="card-kicker">CHECK + FINISH</text>
+      <text x="18" y="58" class="card-title">Review fresh evidence</text>
+      <text x="18" y="83" class="card-copy">A checker inspects behavior and diff.</text>
+      <text x="18" y="104" class="card-copy">Only blocking findings loop back;</text>
+      <text x="18" y="123" class="card-copy">finish reports proof and real risk.</text>
+    </g>
+  </g>
+
+  <g fill="none" stroke="#6f86a4" stroke-width="2" marker-end="url(#arrow)">
+    <path d="M 290 223 H 322"/>
+    <path d="M 554 223 H 586"/>
+    <path d="M 818 223 H 850"/>
+  </g>
+
+  <g transform="translate(250 332)" filter="url(#shadow)">
+    <rect width="700" height="112" rx="18" fill="url(#state)" stroke="#35506f" stroke-width="2"/>
+    <text x="24" y="35" class="state-title">.loop/task.json</text>
+    <text x="24" y="59" class="small">One bounded record—not a daemon, transcript store, or second source of truth.</text>
+    <g transform="translate(24 74)">
+      <rect width="72" height="24" rx="12" fill="#193b37" stroke="#2b6f64"/>
+      <text x="17" y="16" class="chip">phase</text>
+      <rect x="84" width="68" height="24" rx="12" fill="#162d49" stroke="#315c8d"/>
+      <text x="102" y="16" class="chip">plan</text>
+      <rect x="164" width="68" height="24" rx="12" fill="#162d49" stroke="#315c8d"/>
+      <text x="181" y="16" class="chip">files</text>
+      <rect x="244" width="105" height="24" rx="12" fill="#162d49" stroke="#315c8d"/>
+      <text x="261" y="16" class="chip">verification</text>
+      <rect x="361" width="90" height="24" rx="12" fill="#29243a" stroke="#68538b"/>
+      <text x="378" y="16" class="chip">checker</text>
+      <rect x="463" width="105" height="24" rx="12" fill="#193b37" stroke="#2b6f64"/>
+      <text x="480" y="16" class="chip">next action</text>
+      <rect x="580" width="91" height="24" rx="12" fill="#193b37" stroke="#2b6f64"/>
+      <text x="597" y="16" class="chip">blockers</text>
+    </g>
+  </g>
+
+  <path d="M 440 292 V 324" fill="none" stroke="#3ee8c5" stroke-width="2" marker-end="url(#arrow-cyan)"/>
+  <path d="M 704 292 V 324" fill="none" stroke="#5b9dff" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 1010 292 V 318 H 925 V 324" fill="none" stroke="#aa8ad8" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <g transform="translate(38 474)">
+    <rect width="390" height="56" rx="15" fill="#0e1724" stroke="#2c415d"/>
+    <text x="18" y="24" class="card-kicker">INTERRUPTED?</text>
+    <text x="18" y="44" class="small">Resume with a bounded next action, paths, proof, and blockers.</text>
+  </g>
+  <path d="M 348 448 V 466" fill="none" stroke="#6f86a4" stroke-width="2" stroke-dasharray="5 5" marker-end="url(#arrow)"/>
+
+  <g transform="translate(772 474)">
+    <rect width="390" height="56" rx="15" fill="#241d1a" stroke="#8f6339"/>
+    <text x="18" y="24" class="card-kicker">WORKSPACE CHANGED?</text>
+    <text x="18" y="44" class="warning">Stale proof is cleared → return to implementation.</text>
+  </g>
+  <path d="M 852 448 V 466" fill="none" stroke="#f0a94b" stroke-width="2" stroke-dasharray="5 5" marker-end="url(#arrow)"/>
+</svg>
