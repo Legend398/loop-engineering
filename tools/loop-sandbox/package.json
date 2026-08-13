@@ -1,0 +1,49 @@
+{
+  "name": "@cobusgreyling/loop-sandbox",
+  "version": "1.0.0",
+  "description": "The ultimate L2 safety mechanism. Diverts agent execution into an ephemeral git worktree, captures their changes as a .patch file, and destroys the sandbox.",
+  "type": "module",
+  "bin": {
+    "loop-sandbox": "./dist/cli.js"
+  },
+  "main": "./dist/sandbox.js",
+  "types": "./dist/sandbox.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "prepublishOnly": "npm test",
+    "start": "node dist/cli.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "loop-engineering",
+    "ai-agents",
+    "coding-agents",
+    "sandbox",
+    "security"
+  ],
+  "author": "Cobus Greyling",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cobusgreyling/loop-engineering.git",
+    "directory": "tools/loop-sandbox"
+  },
+  "homepage": "https://cobusgreyling.github.io/loop-engineering/",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@cobusgreyling/loop-worktree": "^1.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

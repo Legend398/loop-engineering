@@ -1,0 +1,53 @@
+{
+  "name": "@cobusgreyling/loop",
+  "version": "0.1.2",
+  "description": "Unified Loop Engineering CLI \u2014 one front door for init, audit, cost, sync, doctor, and status. Existing packages stay supported. npx @cobusgreyling/loop doctor .",
+  "type": "module",
+  "bin": {
+    "loop": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "prepublishOnly": "npm test",
+    "start": "node dist/cli.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "loop-engineering",
+    "ai-agents",
+    "coding-agents",
+    "claude-code",
+    "codex",
+    "grok",
+    "opencode",
+    "cli",
+    "doctor",
+    "readiness"
+  ],
+  "author": "Cobus Greyling",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cobusgreyling/loop-engineering.git",
+    "directory": "tools/loop"
+  },
+  "homepage": "https://cobusgreyling.github.io/loop-engineering/",
+  "bugs": {
+    "url": "https://github.com/cobusgreyling/loop-engineering/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3"
+  },
+  "main": "dist/cli.js"
+}

@@ -1,0 +1,37 @@
+{
+  "name": "@cobusgreyling/readiness-core",
+  "version": "1.0.0",
+  "description": "Core types and utilities for loop and goal audits.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "author": "Cobus Greyling",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cobusgreyling/loop-engineering.git",
+    "directory": "tools/readiness-core"
+  },
+  "homepage": "https://cobusgreyling.github.io/loop-engineering/",
+  "bugs": {
+    "url": "https://github.com/cobusgreyling/loop-engineering/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.0.0"
+  }
+}
